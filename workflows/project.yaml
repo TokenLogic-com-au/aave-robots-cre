@@ -1,0 +1,79 @@
+# ==========================================================================
+# CRE PROJECT SETTINGS — Aave automation agents
+# ==========================================================================
+# One target per network. `workflow-owner-address` is the multisig Safe that
+# owns the workflow in the Chainlink WorkflowRegistry (Ethereum mainnet); the
+# same Safe owns every target, regardless of the target chain. Lifecycle
+# actions are produced with `--unsigned` and proposed through that Safe.
+#
+# OWNER NOTE: workflow-owner-address is intentionally left blank. The final owner
+# will be a "proxied guardian" contract (per Aave) that splits ownership between
+# a guardian Safe and the executor. Deploy that contract, then set its address
+# as workflow-owner-address on all 7 targets (look for the "TODO" markers).
+# It must NOT reuse the legacy BGD Safe `0xa7F927EA68f2F916Bf6362CC4B11726ccAD6339B`.
+# Inputs to the proxy, for reference:
+#   GOVERNANCE_GUARDIAN: 0xCe52ab41C40575B072A18C9700091Ccbe4A06710  (guardian Safe)
+#   EXECUTOR_LVL_1:      0x5300A1a15135EA4dc7aD5a167152C01EFc9b192A  (executor)
+# ==========================================================================
+
+ethereum-agents-production-settings:
+  account:
+    workflow-owner-address: "" # TODO: add correct proxied guardian
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: ${RPC_URL_ETHEREUM}
+
+# ==========================================================================
+polygon-agents-production-settings:
+  account:
+    workflow-owner-address: "" # TODO: add correct proxied guardian
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: polygon-mainnet
+      url: ${RPC_URL_POLYGON}
+
+# ==========================================================================
+optimism-agents-production-settings:
+  account:
+    workflow-owner-address: "" # TODO: add correct proxied guardian
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: ethereum-mainnet-optimism-1
+      url: ${RPC_URL_OPTIMISM}
+
+# ==========================================================================
+arbitrum-agents-production-settings:
+  account:
+    workflow-owner-address: "" # TODO: add correct proxied guardian
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: ethereum-mainnet-arbitrum-1
+      url: ${RPC_URL_ARBITRUM}
+
+# ==========================================================================
+base-agents-production-settings:
+  account:
+    workflow-owner-address: "" # TODO: add correct proxied guardian
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: ethereum-mainnet-base-1
+      url: ${RPC_URL_BASE}
+
+# ==========================================================================
+bnb-agents-production-settings:
+  account:
+    workflow-owner-address: "" # TODO: add correct proxied guardian
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: binance_smart_chain-mainnet
+      url: ${RPC_URL_BNB}
+
+# ==========================================================================
+avalanche-agents-production-settings:
+  account:
+    workflow-owner-address: "" # TODO: add correct proxied guardian
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: avalanche-mainnet
+      url: ${RPC_URL_AVALANCHE}

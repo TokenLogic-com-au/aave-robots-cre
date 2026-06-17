@@ -1,0 +1,39 @@
+[profile.default]
+src = 'workflows'
+test = 'workflows'
+script = 'workflows'
+out = 'out'
+libs = ['lib']
+solc = '0.8.28'
+optimizer = true
+optimizer_runs = 200
+remappings = []
+fs_permissions = [{access = "write", path = "./reports"}]
+ffi = true
+evm_version = 'cancun'
+
+[lint]
+ignore = ["workflows/**/tests/**/*"]
+
+[rpc_endpoints]
+mainnet = "${RPC_MAINNET}"
+tenderly_devnet = "${RPC_TENDERLY_DEVNET}"
+optimism = "${RPC_OPTIMISM}"
+avalanche = "${RPC_AVALANCHE}"
+polygon = "${RPC_POLYGON}"
+arbitrum = "${RPC_ARBITRUM}"
+base = "${RPC_BASE}"
+gnosis = "${RPC_GNOSIS}"
+bnb = "${RPC_BNB}"
+scroll = "${RPC_SCROLL}"
+
+[etherscan]
+mainnet = { key = "${ETHERSCAN_API_KEY}", chain = 1 }
+optimism = { key = "${ETHERSCAN_API_KEY}", chain = 10 }
+avalanche = { key = "${ETHERSCAN_API_KEY}", chain = 43114 }
+polygon = { key = "${ETHERSCAN_API_KEY}", chain = 137 }
+arbitrum = { key = "${ETHERSCAN_API_KEY}", chain = 42161 }
+base = { key = "${ETHERSCAN_API_KEY}", chainId = 8453 }
+gnosis = { key = "${ETHERSCAN_API_KEY}", chainId = 100 }
+bnb = { key = "${ETHERSCAN_API_KEY}", chainId = 56, url = 'https://api.bscscan.com/api' }
+scroll = { key = "${ETHERSCAN_API_KEY}", chainId = 534352 }

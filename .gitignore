@@ -1,0 +1,18 @@
+cache/
+out/
+broadcast/
+
+.env
+.idea
+.vscode
+
+node_modules/
+dist/
+
+# CRE workflow build artifacts (compiled by `cre workflow build` / `deploy`)
+.cre_build_tmp.js
+*.wasm
+*.wasm.br
+*.wasm.br.b64
+
+.DS_Store

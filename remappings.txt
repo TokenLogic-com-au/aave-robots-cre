@@ -1,0 +1,10 @@
+aave-cre/=workflows/shared/src/
+aave-helpers/=lib/aave-helpers/src/
+aave-address-book/=lib/aave-helpers/lib/aave-address-book/src/
+aave-v4/=lib/aave-helpers/lib/aave-address-book/lib/aave-v4/src/
+aave-v3-origin/=lib/aave-helpers/lib/aave-address-book/lib/aave-v3-origin/src/
+solidity-utils/=lib/aave-helpers/lib/aave-address-book/lib/aave-v3-origin/lib/solidity-utils/src/
+openzeppelin-contracts/=lib/aave-helpers/lib/aave-address-book/lib/aave-v3-origin/lib/solidity-utils/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/
+forge-std/=lib/forge-std/src/
+lib/aave-helpers/lib/aave-address-book/lib/aave-v4/:src/=lib/aave-helpers/lib/aave-address-book/lib/aave-v4/src/
+lib/aave-helpers/lib/aave-address-book/lib/aave-v3-origin/:src/=lib/aave-helpers/lib/aave-address-book/lib/aave-v3-origin/src/

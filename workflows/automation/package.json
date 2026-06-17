@@ -1,0 +1,16 @@
+{
+  "name": "aave-cre-automation",
+  "version": "1.0.0",
+  "main": "dist/main.js",
+  "private": true,
+  "scripts": {
+    "postinstall": "bunx cre-setup"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@chainlink/cre-sdk": "^1.5.0-alpha.4"
+  },
+  "devDependencies": {
+    "@types/bun": "1.2.21"
+  }
+}

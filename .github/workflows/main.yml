@@ -1,0 +1,32 @@
+name: Main workflow
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Prettier lint check
+    uses: aave-dao/github-workflows/.github/workflows/foundry-lint-prettier.yml@main
+
+  foundry:
+    name: Foundry build (MailboxCRE)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Foundry setup
+        uses: aave-dao/github-workflows/.github/actions/foundry-setup@main
+        with:
+          FOUNDRY_VERSION: stable
+      - name: Forge build
+        run: forge build --sizes
+
+  # NOTE: the offchain workflows under `workflows/automation` (bun +
+  # @chainlink/cre-sdk) have no CI job yet — add a typecheck once the toolchain
+  # is confirmed in CI (viem is pulled transitively by the SDK and may need to
+  # be declared as a direct dep first).
