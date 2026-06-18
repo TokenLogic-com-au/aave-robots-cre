@@ -1,0 +1,81 @@
+name: Main workflow
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Prettier lint check
+    uses: aave-dao/github-workflows/.github/workflows/foundry-lint-prettier.yml@main
+
+  foundry:
+    name: Foundry build, size & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Foundry setup
+        uses: aave-dao/github-workflows/.github/actions/foundry-setup@main
+        with:
+          FOUNDRY_VERSION: stable
+
+      - name: Set RPC env
+        uses: aave-dao/action-rpc-env@main
+        with:
+          ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY }}
+
+      - name: Forge size
+        uses: aave-dao/github-workflows/.github/actions/foundry-size@main
+
+      - name: Forge test
+        id: test
+        uses: aave-dao/github-workflows/.github/actions/foundry-test@main
+
+      # foundry-test reports failures via its testStatus output without failing the step.
+      - name: Fail if any test failed
+        if: steps.test.outputs.testStatus != '0'
+        run: exit 1
+
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: oven-sh/setup-bun@v2
+      - name: Install shared offchain deps
+        working-directory: workflows/shared/offchain
+        run: npm ci
+      - name: Install workflow deps
+        working-directory: workflows/fee-shares-minter/offchain
+        run: npm ci
+      - name: Typecheck
+        working-directory: workflows/fee-shares-minter/offchain
+        run: npm run typecheck
+      - name: Offchain tests
+        working-directory: workflows/fee-shares-minter/offchain
+        run: bun test
+
+  abis-up-to-date:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Regenerate ABIs and verify no diff
+        run: |
+          npm run generate-abis
+          git diff --exit-code -- workflows/shared/offchain/abi || {
+            echo "Checked-in ABIs are stale. Run 'npm run generate-abis' and commit the result." >&2
+            exit 1
+          }

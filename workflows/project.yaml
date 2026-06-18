@@ -1,0 +1,11 @@
+devnet-settings:
+  # account:
+  #   workflow-owner-address: ""
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: ${RPC_TENDERLY_DEVNET}
+
+production-settings:
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}

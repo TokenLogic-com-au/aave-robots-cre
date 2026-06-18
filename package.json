@@ -1,0 +1,24 @@
+{
+  "name": "aave-robots-cre",
+  "version": "1.0.0",
+  "private": false,
+  "description": "On-chain receivers and off-chain Chainlink CRE workflows for Aave automation robots.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aave-dao/aave-robots-cre.git"
+  },
+  "license": "MIT",
+  "scripts": {
+    "generate-abis": "node workflows/shared/offchain/generate-abis.mjs",
+    "lint": "prettier --check \"./workflows/**/*.sol\" \"./workflows/**/*.ts\" \"./workflows/**/*.yaml\" \"./workflows/**/*.json\"",
+    "lint:fix": "prettier --write \"./workflows/**/*.sol\" \"./workflows/**/*.ts\" \"./workflows/**/*.yaml\" \"./workflows/**/*.json\""
+  },
+  "devDependencies": {
+    "prettier": "3.8.3",
+    "prettier-plugin-solidity": "1.4.3"
+  },
+  "engines": {
+    "node": "22",
+    "npm": ">=11"
+  }
+}

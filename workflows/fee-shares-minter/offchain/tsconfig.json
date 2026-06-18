@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext"],
+    "outDir": "./dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": []
+  },
+  "include": [
+    "main.ts",
+    "workflow.ts",
+    "types.ts",
+    "../../shared/offchain/**/*.ts",
+    "../../../lib/aave-helpers/lib/aave-address-book/src/ts/AaveV4Ethereum.ts"
+  ]
+}
