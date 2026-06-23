@@ -5,3 +5,4 @@ node_modules/
 dist/
 broadcast/
 package-lock.json
+workflows/shared/offchain/abi/

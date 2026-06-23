@@ -1,0 +1,19 @@
+# ==========================================================================
+# CRE WORKFLOW SETTINGS — FeeSharesMinter
+# ==========================================================================
+devnet-settings:
+  user-workflow:
+    workflow-name: "fee-shares-minter-devnet"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.devnet.json"
+    secrets-path: ""
+
+# ==========================================================================
+production-settings:
+  user-workflow:
+    workflow-name: "fee-shares-minter-production"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.production.json"
+    secrets-path: ""

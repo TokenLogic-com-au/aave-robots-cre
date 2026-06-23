@@ -9,6 +9,7 @@
   },
   "license": "MIT",
   "scripts": {
+    "generate-abis": "node workflows/shared/offchain/generate-abis.mjs",
     "lint": "prettier --check \"./workflows/**/*.sol\" \"./workflows/**/*.ts\" \"./workflows/**/*.yaml\" \"./workflows/**/*.json\"",
     "lint:fix": "prettier --write \"./workflows/**/*.sol\" \"./workflows/**/*.ts\" \"./workflows/**/*.yaml\" \"./workflows/**/*.json\""
   },

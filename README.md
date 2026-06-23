@@ -2,99 +2,118 @@
 
 On-chain receivers and off-chain Chainlink Runtime Environment (CRE) workflows for Aave automation robots.
 
-This repo is the long-term home for **all** Aave CRE automations. Work is organized under `workflows/`, one folder per workflow/robot, with any Solidity (receiver/deploy scripts) and the TypeScript CRE workflow co-located.
+This repo is the long-term home for **all** Aave CRE automations, organized under `workflows/` — both **native** robots (a contract implementing `IAaveCREReceiver` + its workflow, co-located) and the **migration** automation that drives the existing, already-deployed protocol robots through a generic `MailboxCRE`.
 
-## What's here
+## Robots
 
-| Workflow | Folder | What it does |
+| Robot | Folder | What it does |
 | --- | --- | --- |
-| Automation (protocol robots) | [`workflows/automation`](workflows/automation) | Generic CRE engine that drives the **existing, already-deployed** Aave protocol robots (StataToken Rewards, Slashing, GSM Freezer, Cap Agent, Proof of Reserve) across 7 networks, routing writes through `MailboxCRE`. |
-| MailboxCRE | [`workflows/mailbox`](workflows/mailbox) | The on-chain receiver contract + per-chain deploy scripts + deployed-address registry. |
+| FeeSharesMinter | [`workflows/fee-shares-minter`](workflows/fee-shares-minter) | Native robot — mints accrued fee shares on Aave v4 hubs once a configurable threshold is crossed. |
+| Automation (protocol robots) | [`workflows/automation`](workflows/automation) | Generic CRE engine driving the **existing, already-deployed** protocol robots (StataToken Rewards, Slashing, GSM Freezer, Cap Agent, Proof of Reserve) across 7 networks — referenced by address, writes routed through `MailboxCRE`. |
+| MailboxCRE | [`workflows/mailbox`](workflows/mailbox) | The on-chain receiver/forwarder used by the automation workflow + per-chain deploy scripts + deployed-address registry. |
 
-See each folder's README for details.
+See each folder's README for the contract design, test instructions, deploy flow and CRE workflow config.
 
-## How it works
+## Two patterns
 
-The existing robots only expose the legacy Chainlink Automation interface
-(`checkUpkeep` / `performUpkeep`), not the CRE `onReport`. So the automation
-workflow connects CRE to them through a generic adapter, `MailboxCRE`:
-
-```
-CRE workflow (cron, per network)
-  └─ checkUpkeep(robot)               # off-chain read, directly on the robot
-       └─ [upkeep needed]
-            └─ estimateGas → runtime.report()   # sign & encode (target, calldata)
-                 └─ writeReport → MailboxCRE.onReport()
-                                      └─ robot.performUpkeep()
-```
-
-Reads (`checkUpkeep`) hit the robot directly; only writes go through the Mailbox.
-The robots are permissionless, so the Mailbox is a permissionless forwarder.
+- **Native** (e.g. FeeSharesMinter): the robot contract implements `IAaveCREReceiver` directly, so CRE writes its signed report straight to `onReport`. New robots are built this way.
+- **Migration** (`workflows/automation`): the existing robots only expose the legacy Chainlink Automation interface (`checkUpkeep` / `performUpkeep`), not `onReport`. The generic engine calls `checkUpkeep` off-chain and, when work is needed, writes a signed report to `MailboxCRE`, which decodes `(target, calldata)` and forwards `performUpkeep`. Robots are referenced by address — none is redeployed. Owner of those workflows is the proxied-guardian Safe set in [`workflows/project.yaml`](workflows/project.yaml).
 
 ## Layout
 
 ```
 workflows/
-├── project.yaml                       # CRE project settings — one target per network (rpcs, owner)
-├── automation/                        # generic engine + per-network robot lists
+├── project.yaml, secrets.yaml         # CRE project-wide settings (rpcs, owner, secret refs)
+├── shared/                            # reused across native robots
+│   ├── src/
+│   │   ├── IReceiver.sol              # vendored Chainlink keystone interface
+│   │   └── IAaveCREReceiver.sol       # IReceiver + checkUpkeep — base for native robots
+│   └── offchain/
+│       └── checkUpkeep.ts             # generic checkUpkeep → sign → writeReport helper
+├── automation/                        # migration engine + per-network robot lists
 │   ├── main.ts, handlers.ts, processAutomation.ts, types.ts
 │   ├── workflow.yaml                  # one target per network
 │   └── config.<chain>-agents.json     # robots to automate on each chain
-├── contracts/abi/                     # ABIs the engine uses (ICLAutomation, IMailboxCRE)
-├── mailbox/                           # MailboxCRE receiver
-│   ├── src/MailboxCRE.sol
-│   ├── scripts/MailboxCRE.s.sol       # one Deploy<Chain> per network
-│   └── README.md                      # deployed-address registry
-└── shared/src/IReceiver.sol           # vendored Chainlink keystone receiver interface
+├── contracts/abi/                     # ABIs the migration engine uses (ICLAutomation, IMailboxCRE)
+├── mailbox/                           # MailboxCRE receiver/forwarder + deploy scripts + registry
+└── <robot-name>/                      # one folder per native robot — onchain + offchain co-located
+    ├── README.md
+    ├── src/                           # Solidity contracts
+    ├── tests/                         # Solidity tests (unit + fork)
+    ├── scripts/                       # forge deploy scripts
+    └── offchain/                      # the CRE workflow (main.ts, workflow.yaml, configs, …)
 ```
 
-## Networks & robots
+## On-chain contract — `IAaveCREReceiver`
 
-7 networks, 19 robots, all referenced **by address** (no robot is redeployed):
-ethereum (5), polygon (2), optimism (2), arbitrum (2), base (2), bnb (2),
-avalanche (4). The full per-chain list lives in the `config.<chain>-agents.json`
-files; the deployed `MailboxCRE` addresses are in
-[`workflows/mailbox/README.md`](workflows/mailbox/README.md).
+Native robots MUST inherit [`IAaveCREReceiver`](workflows/shared/src/IAaveCREReceiver.sol), which exposes two surfaces:
+
+- `onReport(metadata, report)` — from `IReceiver`. The CRE forwarder calls this when a workflow delivers a signed report. `metadata` carries the workflow id, owner and name; the forwarder identity is `msg.sender`. Implementations choose between permissioned (validate the metadata fields against an allowlist and pin `msg.sender` to a configured forwarder address) and permissionless (ignore both) depending on whether restricting _delivery_ offers any security on top of the action itself.
+- `checkUpkeep(checkData) → (upkeepNeeded, performData)` — borrowed from the legacy Chainlink Automation interface. The off-chain workflow uses it as a cheap read-only probe: if `upkeepNeeded`, it signs `performData` and submits it as `report`.
+
+The Solidity interface is the single source of truth for both sides. The off-chain code imports a checked-in `as const` ABI from [`workflows/shared/offchain/abi/IAaveCREReceiver.ts`](workflows/shared/offchain/abi/IAaveCREReceiver.ts), generated from the foundry build artifact by [`workflows/shared/offchain/generate-abis.mjs`](workflows/shared/offchain/generate-abis.mjs):
+
+```bash
+npm run generate-abis   # runs `forge build` then writes workflows/shared/offchain/abi/*.ts
+```
+
+The generated TS file is committed, so workflows type-check and bundle without needing a fresh `forge build`. To add another robot ABI, append its name to the `ABIS` list at the top of `generate-abis.mjs`. CI fails if the committed ABIs are stale vs the Solidity sources.
+
+The migration automation does **not** use `IAaveCREReceiver` on the robots (they predate it); it uses `MailboxCRE` as the receiver instead — see [`workflows/mailbox`](workflows/mailbox) and [`workflows/automation`](workflows/automation).
 
 ## Workflow ownership
 
-CRE workflows are registered and owned by a multisig on the Chainlink
-[`WorkflowRegistry`](https://github.com/smartcontractkit/chainlink-evm/blob/develop/contracts/cre/src/v2/WorkflowRegistry.sol)
-(Ethereum mainnet, `0x4Ac54353FA4Fa961AfcC5ec4B118596d3305E7e5`). Lifecycle
-actions (register/update, activate, pause, delete) are produced as **unsigned**
-transactions and proposed through that owner.
-
-`workflow-owner-address` in [`workflows/project.yaml`](workflows/project.yaml) is
-currently left blank: the intended owner is a "proxied guardian" contract that
-splits ownership between a guardian Safe and the executor — set its address on
-all targets once it is deployed (look for the `TODO` markers).
-
-## Build, simulate & deploy
-
-```bash
-make install                       # npm install + bun install (workflows/automation)
-
-make simulate chain=ethereum       # simulate a network's workflow (trigger picker)
-make simulate-one chain=avalanche i=3   # simulate a single robot non-interactively
-
-make deploy chain=ethereum         # cre workflow deploy ... --unsigned (prints tx for the Safe)
-make activate chain=ethereum       # cre workflow activate ... --unsigned
-```
-
-`make lint` / `make lint-fix` run prettier over `workflows/`.
-
-RPC endpoints come from `.env` (`${RPC_URL_<CHAIN>}`); see [`.env.example`](.env.example).
+CRE workflows are registered and owned by a multisig Safe on the Chainlink [`WorkflowRegistry`](https://github.com/smartcontractkit/chainlink-evm/blob/develop/contracts/cre/src/v2/WorkflowRegistry.sol) (Ethereum mainnet, `0x4Ac54353FA4Fa961AfcC5ec4B118596d3305E7e5`). The Safe is the registry-level workflow owner, so workflow lifecycle actions (register/update, activate, pause, delete) are produced as unsigned transactions and proposed through the Safe. The automation-agents targets in [`workflows/project.yaml`](workflows/project.yaml) are owned by the proxied-guardian Safe `0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B`.
 
 ## Dependencies
 
-Solidity dependencies (for `MailboxCRE`) come through
-[`aave-helpers`](https://github.com/aave-dao/aave-helpers) as a git submodule,
-which transitively pulls `openzeppelin-contracts` and friends via
-[`remappings.txt`](remappings.txt):
+Solidity dependencies come through [`aave-helpers`](https://github.com/aave-dao/aave-helpers) as a git submodule. That transitively pulls `aave-address-book`, `aave-v3-origin`, `aave-v4`, `solidity-utils` and `openzeppelin-contracts`, all reachable via [`remappings.txt`](remappings.txt).
 
 ```bash
 git submodule update --init --recursive
 ```
 
-The off-chain workflow uses [`bun`](https://bun.sh) + `@chainlink/cre-sdk`
-(installed by `make install`).
+### npm — maturity gate + exact pins
+
+[`.npmrc`](./.npmrc) enforces:
+
+- `min-release-age=30` — installed package versions must have been on the registry for at least 30 days (npm 11+; value is in days).
+- `save-exact=true` — installs pin exact versions (no `^` / `~`).
+- `engine-strict=false` — engine mismatches warn instead of failing, so installs work on the npm bundled with Node 22 (npm 10); npm 11 is still recommended for `min-release-age` to apply.
+
+All packages in the tree are pinned exactly. Adding a dependency requires waiting out the maturity gate before the lockfile can resolve.
+
+## Building & testing
+
+```bash
+make install        # forge install + npm install (root + each workflow's offchain/ + automation bun)
+make build          # forge build --sizes — produces ABI artifacts in out/
+make test-unit      # forge test, excluding fork tests
+make test-fork      # RPC_MAINNET=... make test-fork
+make test           # both
+```
+
+Per-workflow TS typechecks and offchain unit tests are wired separately (e.g. `make typecheck-fee-shares-minter`, `make test-offchain-fee-shares-minter`). Typechecks require `make build` first. Offchain tests use the cre-sdk's `EvmMock` to stub the EVM client and exercise the workflow handler end-to-end against canned responses; they run on `bun` (must be on `PATH`).
+
+Generic offchain test helpers (`encodeCheckUpkeepResult`, `mockLog`, `mockReceipt`) live in [`workflows/shared/offchain/testing/mocks.ts`](workflows/shared/offchain/testing/mocks.ts) and are reusable from any robot's `workflow.test.ts`.
+
+For the migration automation: `make simulate chain=ethereum` (or `make simulate-one chain=avalanche i=3`) runs a network's workflow against mainnet; `make deploy-automation chain=ethereum` / `make activate-automation chain=ethereum` produce the unsigned lifecycle tx for the owner Safe.
+
+CI (`.github/workflows/main.yml`) runs the foundry suite (unit + fork tests), the TS typecheck, and the offchain bun tests on every PR. `secrets.ALCHEMY_API_KEY` must be available to the workflow (typically inherited from the org); CI constructs `RPC_MAINNET` from it for the fork-tests step, which fails hard if the secret is missing. The fork test itself only reads `RPC_MAINNET` — no hardcoded provider.
+
+## Deploying
+
+Native-robot deployments use a foundry-managed keystore account. Create one with `cast wallet import <name>`, set `ACCOUNT_NAME=<name>` in `.env`, then run the per-robot make targets (e.g. `make deploy-fee-shares-minter env=Mainnet dry=true` to simulate, `make deploy-fee-shares-minter env=Mainnet` to broadcast). See each robot's README for the available targets.
+
+The migration automation workflows are deployed through the owner Safe via `cre workflow deploy … --unsigned` (`make deploy-automation chain=<chain>`); `MailboxCRE` itself ships with per-chain forge deploy scripts in [`workflows/mailbox`](workflows/mailbox).
+
+## Adding a new robot
+
+1. Create `workflows/<robot-name>/`.
+2. `src/` — robot contract inheriting `IAaveCREReceiver` (`import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';`), plus an `I<RobotName>.sol` interface that inherits `IAaveCREReceiver`.
+3. `tests/` — unit tests (mock dependencies) and a `*Fork*` test (filename `<Robot>.fork.t.sol`, contract name ending in `Fork`).
+4. `scripts/` — a forge deploy script. Stand-alone — robots are NOT part of any v3/v4 deployment / config engine.
+5. `offchain/` — the CRE workflow. Required files: `main.ts` (entry point), `workflow.ts` (handler + config schema), `workflow.yaml` (CRE workflow settings, with a `workflow-name` unique to this robot), `config.staging.json` / `config.production.json`, plus its own `package.json` and `tsconfig.json` (the latter must include `../../shared/offchain/**/*.ts`). See [`workflows/fee-shares-minter/offchain`](workflows/fee-shares-minter/offchain) for a reference shape. The shared `checkAndReport` helper is reusable when `onReport` is permissionless and the robot's `performData` is exactly the bytes you'd pass as `report`; for Mailbox-style permissioned `onReport`, write the post-`checkUpkeep` step in the workflow itself.
+6. Add a row to the **Robots** table above with a link to the new folder's README.
+
+> To automate an **already-deployed** robot instead of building a new contract, add it to the relevant `workflows/automation/config.<chain>-agents.json` (see [`workflows/automation`](workflows/automation)) rather than creating a new folder.

@@ -1,13 +1,28 @@
 # ==========================================================================
-# CRE PROJECT SETTINGS — Aave automation agents
+# CRE PROJECT SETTINGS
 # ==========================================================================
-# One target per network. `workflow-owner-address` is the multisig Safe that
-# owns the workflow in the Chainlink WorkflowRegistry (Ethereum mainnet); the
-# same Safe owns every target, regardless of the target chain. Lifecycle
-# actions are produced with `--unsigned` and proposed through that Safe.
+# Per-target account + rpcs. FeeSharesMinter targets (devnet/production) and the
+# per-network automation-agents targets coexist here.
 #
+# Automation-agents owner: the "proxied guardian" Safe
+# 0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B (splits ownership between a guardian
+# Safe and the executor). Same Safe owns every agents target.
 # ==========================================================================
 
+# ---- FeeSharesMinter ----
+devnet-settings:
+  # account:
+  #   workflow-owner-address: ""
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: ${RPC_TENDERLY_DEVNET}
+
+production-settings:
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}
+
+# ---- Automation agents (existing protocol robots via MailboxCRE) ----
 ethereum-agents-production-settings:
   account:
     workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
@@ -16,7 +31,6 @@ ethereum-agents-production-settings:
     - chain-name: ethereum-mainnet
       url: ${RPC_URL_ETHEREUM}
 
-# ==========================================================================
 polygon-agents-production-settings:
   account:
     workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
@@ -25,7 +39,6 @@ polygon-agents-production-settings:
     - chain-name: polygon-mainnet
       url: ${RPC_URL_POLYGON}
 
-# ==========================================================================
 optimism-agents-production-settings:
   account:
     workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
@@ -34,7 +47,6 @@ optimism-agents-production-settings:
     - chain-name: ethereum-mainnet-optimism-1
       url: ${RPC_URL_OPTIMISM}
 
-# ==========================================================================
 arbitrum-agents-production-settings:
   account:
     workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
@@ -43,7 +55,6 @@ arbitrum-agents-production-settings:
     - chain-name: ethereum-mainnet-arbitrum-1
       url: ${RPC_URL_ARBITRUM}
 
-# ==========================================================================
 base-agents-production-settings:
   account:
     workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
@@ -52,7 +63,6 @@ base-agents-production-settings:
     - chain-name: ethereum-mainnet-base-1
       url: ${RPC_URL_BASE}
 
-# ==========================================================================
 bnb-agents-production-settings:
   account:
     workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
@@ -61,7 +71,6 @@ bnb-agents-production-settings:
     - chain-name: binance_smart_chain-mainnet
       url: ${RPC_URL_BNB}
 
-# ==========================================================================
 avalanche-agents-production-settings:
   account:
     workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
