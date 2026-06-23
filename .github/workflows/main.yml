@@ -64,6 +64,15 @@ jobs:
       - name: Offchain tests
         working-directory: workflows/fee-shares-minter/offchain
         run: bun test
+      - name: Install automation deps
+        working-directory: workflows/automation
+        run: bun install
+      - name: Typecheck automation
+        working-directory: workflows/automation
+        run: bun run typecheck
+      - name: Automation tests
+        working-directory: workflows/automation
+        run: bun test
 
   abis-up-to-date:
     runs-on: ubuntu-latest
