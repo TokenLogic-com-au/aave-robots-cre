@@ -113,7 +113,7 @@ cre workflow deploy   ./automation --target=ethereum-agents-production-settings 
 cre workflow activate ./automation --target=ethereum-agents-production-settings --unsigned --yes
 ```
 
-Or: `make deploy chain=ethereum` / `make activate chain=ethereum`. The workflow
+Or: `make deploy-automation chain=ethereum` / `make activate-automation chain=ethereum`. The workflow
 name per target is set in `workflow.yaml` (e.g. `automation-ethereum-agents`).
 Deploying again with the same name updates the existing workflow.
 
