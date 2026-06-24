@@ -1,0 +1,36 @@
+{
+  "schedule": "*/5 * * * *",
+  "evms": [
+    {
+      "chainName": "ethereum-mainnet",
+      "mailboxAddress": "0x14fa87C3B5F1b95444D1b4Ed9A8fC8516D5d23bF",
+      "automations": [
+        {
+          "address": "0x892B74CD3703B427CD90e7f140F358A1DE1EA703",
+          "checkData": "0x",
+          "name": "StataToken Rewards (Core)"
+        },
+        {
+          "address": "0x858f50cB70e6476d37543275aF4c738Ae8a27893",
+          "checkData": "0x",
+          "name": "StataToken Rewards (Prime)"
+        },
+        {
+          "address": "0x4216d695070ce243e48A3bB0646CaA4DDB81B957",
+          "checkData": "0x",
+          "name": "Slashing"
+        },
+        {
+          "address": "0x6e51936e0ED4256f9dA4794B536B619c88Ff0047",
+          "checkData": "0x",
+          "name": "GSM Freezer (USDC)"
+        },
+        {
+          "address": "0x733AB16005c39d07FD3D9d1A350AA6768D10125b",
+          "checkData": "0x",
+          "name": "GSM Freezer (USDT)"
+        }
+      ]
+    }
+  ]
+}

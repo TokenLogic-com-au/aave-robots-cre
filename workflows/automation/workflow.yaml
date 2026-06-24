@@ -1,0 +1,60 @@
+# CRE workflow settings - one target per network. The engine (main.ts) is shared;
+# each target swaps the per-network config file that lists the robots to automate.
+# Deploy/simulate per target, e.g.:
+#   cre workflow simulate ./automation --target=ethereum-agents-production-settings
+
+ethereum-agents-production-settings:
+  user-workflow:
+    workflow-name: "automation-ethereum-agents"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.ethereum-agents.json"
+    secrets-path: ""
+
+polygon-agents-production-settings:
+  user-workflow:
+    workflow-name: "automation-polygon-agents"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.polygon-agents.json"
+    secrets-path: ""
+
+optimism-agents-production-settings:
+  user-workflow:
+    workflow-name: "automation-optimism-agents"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.optimism-agents.json"
+    secrets-path: ""
+
+arbitrum-agents-production-settings:
+  user-workflow:
+    workflow-name: "automation-arbitrum-agents"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.arbitrum-agents.json"
+    secrets-path: ""
+
+base-agents-production-settings:
+  user-workflow:
+    workflow-name: "automation-base-agents"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.base-agents.json"
+    secrets-path: ""
+
+bnb-agents-production-settings:
+  user-workflow:
+    workflow-name: "automation-bnb-agents"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.bnb-agents.json"
+    secrets-path: ""
+
+avalanche-agents-production-settings:
+  user-workflow:
+    workflow-name: "automation-avalanche-agents"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.avalanche-agents.json"
+    secrets-path: ""
