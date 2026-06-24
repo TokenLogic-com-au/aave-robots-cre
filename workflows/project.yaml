@@ -1,3 +1,8 @@
+# Per-target account + rpcs.
+# Agents owner is the Safe 0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B
+# (guardian Safe + executor), used by every agents target below.
+
+# FeeSharesMinter
 devnet-settings:
   # account:
   #   workflow-owner-address: ""
@@ -9,3 +14,60 @@ production-settings:
   rpcs:
     - chain-name: ethereum-mainnet
       url: https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}
+
+# Automation agents (protocol robots via MailboxCRE)
+ethereum-agents-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: ${RPC_URL_ETHEREUM}
+
+polygon-agents-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: polygon-mainnet
+      url: ${RPC_URL_POLYGON}
+
+optimism-agents-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: ethereum-mainnet-optimism-1
+      url: ${RPC_URL_OPTIMISM}
+
+arbitrum-agents-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: ethereum-mainnet-arbitrum-1
+      url: ${RPC_URL_ARBITRUM}
+
+base-agents-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: ethereum-mainnet-base-1
+      url: ${RPC_URL_BASE}
+
+bnb-agents-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: binance_smart_chain-mainnet
+      url: ${RPC_URL_BNB}
+
+avalanche-agents-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: avalanche-mainnet
+      url: ${RPC_URL_AVALANCHE}
