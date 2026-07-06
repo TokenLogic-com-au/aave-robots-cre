@@ -22,7 +22,7 @@ ethereum-agents-production-settings:
     workflow-name: "deployer"
   rpcs:
     - chain-name: ethereum-mainnet
-      url: ${RPC_URL_ETHEREUM}
+      url: ${RPC_MAINNET}
 
 polygon-agents-production-settings:
   account:
@@ -30,7 +30,7 @@ polygon-agents-production-settings:
     workflow-name: "deployer"
   rpcs:
     - chain-name: polygon-mainnet
-      url: ${RPC_URL_POLYGON}
+      url: ${RPC_POLYGON}
 
 optimism-agents-production-settings:
   account:
@@ -38,7 +38,7 @@ optimism-agents-production-settings:
     workflow-name: "deployer"
   rpcs:
     - chain-name: ethereum-mainnet-optimism-1
-      url: ${RPC_URL_OPTIMISM}
+      url: ${RPC_OPTIMISM}
 
 arbitrum-agents-production-settings:
   account:
@@ -46,7 +46,7 @@ arbitrum-agents-production-settings:
     workflow-name: "deployer"
   rpcs:
     - chain-name: ethereum-mainnet-arbitrum-1
-      url: ${RPC_URL_ARBITRUM}
+      url: ${RPC_ARBITRUM}
 
 base-agents-production-settings:
   account:
@@ -54,7 +54,7 @@ base-agents-production-settings:
     workflow-name: "deployer"
   rpcs:
     - chain-name: ethereum-mainnet-base-1
-      url: ${RPC_URL_BASE}
+      url: ${RPC_BASE}
 
 bnb-agents-production-settings:
   account:
@@ -62,7 +62,7 @@ bnb-agents-production-settings:
     workflow-name: "deployer"
   rpcs:
     - chain-name: binance_smart_chain-mainnet
-      url: ${RPC_URL_BNB}
+      url: ${RPC_BNB}
 
 avalanche-agents-production-settings:
   account:
@@ -70,4 +70,4 @@ avalanche-agents-production-settings:
     workflow-name: "deployer"
   rpcs:
     - chain-name: avalanche-mainnet
-      url: ${RPC_URL_AVALANCHE}
+      url: ${RPC_AVALANCHE}
