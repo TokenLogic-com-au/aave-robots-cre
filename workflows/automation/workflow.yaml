@@ -1,60 +1,23 @@
-# CRE workflow settings - one target per network. The engine (main.ts) is shared;
-# each target swaps the per-network config file that lists the robots to automate.
-# Deploy/simulate per target, e.g.:
-#   cre workflow simulate ./automation --target=ethereum-agents-production-settings
+# CRE workflow settings. The engine (main.ts) iterates every `evms` entry in the
+# config, so each workflow drives all of its grouped chains. The 19 robots are
+# split across two workflows to stay within the per-workflow trigger limit (10)
+# and the per-owner workflow quota (3). Deploy/simulate per target, e.g.:
+#   cre workflow simulate ./automation --target=agents-1-production-settings
 
-ethereum-agents-production-settings:
+# ethereum (5) + avalanche (4) = 9 triggers
+agents-1-production-settings:
   user-workflow:
-    workflow-name: "automation-ethereum-agents"
+    workflow-name: "automation-agents-1"
   workflow-artifacts:
     workflow-path: "./main.ts"
-    config-path: "./config.ethereum-agents.json"
+    config-path: "./config.agents-1.json"
     secrets-path: ""
 
-polygon-agents-production-settings:
+# polygon + optimism + arbitrum + base + bnb (2 each) = 10 triggers
+agents-2-production-settings:
   user-workflow:
-    workflow-name: "automation-polygon-agents"
+    workflow-name: "automation-agents-2"
   workflow-artifacts:
     workflow-path: "./main.ts"
-    config-path: "./config.polygon-agents.json"
-    secrets-path: ""
-
-optimism-agents-production-settings:
-  user-workflow:
-    workflow-name: "automation-optimism-agents"
-  workflow-artifacts:
-    workflow-path: "./main.ts"
-    config-path: "./config.optimism-agents.json"
-    secrets-path: ""
-
-arbitrum-agents-production-settings:
-  user-workflow:
-    workflow-name: "automation-arbitrum-agents"
-  workflow-artifacts:
-    workflow-path: "./main.ts"
-    config-path: "./config.arbitrum-agents.json"
-    secrets-path: ""
-
-base-agents-production-settings:
-  user-workflow:
-    workflow-name: "automation-base-agents"
-  workflow-artifacts:
-    workflow-path: "./main.ts"
-    config-path: "./config.base-agents.json"
-    secrets-path: ""
-
-bnb-agents-production-settings:
-  user-workflow:
-    workflow-name: "automation-bnb-agents"
-  workflow-artifacts:
-    workflow-path: "./main.ts"
-    config-path: "./config.bnb-agents.json"
-    secrets-path: ""
-
-avalanche-agents-production-settings:
-  user-workflow:
-    workflow-name: "automation-avalanche-agents"
-  workflow-artifacts:
-    workflow-path: "./main.ts"
-    config-path: "./config.avalanche-agents.json"
+    config-path: "./config.agents-2.json"
     secrets-path: ""

@@ -15,59 +15,38 @@ production-settings:
     - chain-name: ethereum-mainnet
       url: https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}
 
-# Automation agents (protocol robots via MailboxCRE)
-ethereum-agents-production-settings:
+# Automation agents (protocol robots via MailboxCRE). The 19 robots are split
+# across two workflows to fit the per-workflow trigger limit (10) and the
+# per-owner workflow quota (3). The engine iterates every `evms` entry, so each
+# workflow drives all of its grouped chains. ethereum-mainnet is required for
+# the WorkflowRegistry (deploy/link) on every target.
+
+# ethereum (5) + avalanche (4) = 9 triggers
+agents-1-production-settings:
   account:
     workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
     workflow-name: "deployer"
   rpcs:
     - chain-name: ethereum-mainnet
       url: ${RPC_MAINNET}
-
-polygon-agents-production-settings:
-  account:
-    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
-    workflow-name: "deployer"
-  rpcs:
-    - chain-name: polygon-mainnet
-      url: ${RPC_POLYGON}
-
-optimism-agents-production-settings:
-  account:
-    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
-    workflow-name: "deployer"
-  rpcs:
-    - chain-name: ethereum-mainnet-optimism-1
-      url: ${RPC_OPTIMISM}
-
-arbitrum-agents-production-settings:
-  account:
-    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
-    workflow-name: "deployer"
-  rpcs:
-    - chain-name: ethereum-mainnet-arbitrum-1
-      url: ${RPC_ARBITRUM}
-
-base-agents-production-settings:
-  account:
-    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
-    workflow-name: "deployer"
-  rpcs:
-    - chain-name: ethereum-mainnet-base-1
-      url: ${RPC_BASE}
-
-bnb-agents-production-settings:
-  account:
-    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
-    workflow-name: "deployer"
-  rpcs:
-    - chain-name: binance_smart_chain-mainnet
-      url: ${RPC_BNB}
-
-avalanche-agents-production-settings:
-  account:
-    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
-    workflow-name: "deployer"
-  rpcs:
     - chain-name: avalanche-mainnet
       url: ${RPC_AVALANCHE}
+
+# polygon + optimism + arbitrum + base + bnb (2 each) = 10 triggers
+agents-2-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: ${RPC_MAINNET}
+    - chain-name: polygon-mainnet
+      url: ${RPC_POLYGON}
+    - chain-name: ethereum-mainnet-optimism-1
+      url: ${RPC_OPTIMISM}
+    - chain-name: ethereum-mainnet-arbitrum-1
+      url: ${RPC_ARBITRUM}
+    - chain-name: ethereum-mainnet-base-1
+      url: ${RPC_BASE}
+    - chain-name: binance_smart_chain-mainnet
+      url: ${RPC_BNB}
