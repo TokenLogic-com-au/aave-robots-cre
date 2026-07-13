@@ -4,7 +4,7 @@
 # and the per-owner workflow quota (3). Deploy/simulate per target, e.g.:
 #   cre workflow simulate ./automation --target=agents-1-production-settings
 
-# ethereum (5) + avalanche (4) = 9 triggers
+# ethereum (5) + avalanche (4) = 9 triggers. Schedule */1 (1 min)
 agents-1-production-settings:
   user-workflow:
     workflow-name: "automation-agents-1"
@@ -13,7 +13,8 @@ agents-1-production-settings:
     config-path: "./config.agents-1.json"
     secrets-path: ""
 
-# polygon + optimism + arbitrum + base + bnb (2 each) = 10 triggers
+# polygon + optimism + arbitrum + base + bnb (2 each) = 10 triggers. Schedule
+# */5 (5 min)
 agents-2-production-settings:
   user-workflow:
     workflow-name: "automation-agents-2"
