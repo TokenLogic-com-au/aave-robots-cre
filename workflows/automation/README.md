@@ -33,19 +33,16 @@ restricting who may deliver a report provides no security benefit.
 
 ## Config files
 
-One config per network, wired to a workflow target in `workflow.yaml`:
+One config per workflow, wired to a target in `workflow.yaml`:
 
-| File | Target |
-|------|--------|
-| `config.ethereum-agents.json` | `ethereum-agents-production-settings` |
-| `config.polygon-agents.json` | `polygon-agents-production-settings` |
-| `config.optimism-agents.json` | `optimism-agents-production-settings` |
-| `config.arbitrum-agents.json` | `arbitrum-agents-production-settings` |
-| `config.base-agents.json` | `base-agents-production-settings` |
-| `config.bnb-agents.json` | `bnb-agents-production-settings` |
-| `config.avalanche-agents.json` | `avalanche-agents-production-settings` |
+| File | Target | Robots |
+|------|--------|--------|
+| `config.agents-1.json` | `agents-1-production-settings` | Protocol robots: ethereum (5) + avalanche (4) |
+| `config.agents-2.json` | `agents-2-production-settings` | Protocol robots: polygon, optimism, arbitrum, base, bnb (2 each) |
+| `config.gov-1.json` | `gov-1-production-settings` | Governance robots: ethereum (3) + avalanche (2) |
+| `config.gov-2.json` | `gov-2-production-settings` | Governance robots: polygon (2) + optimism, arbitrum, base, bnb (1 each) |
 
-> Configs are split per network because CRE caps a workflow at 10 trigger
+> Robots are grouped this way because CRE caps a workflow at 10 trigger
 > subscriptions (one per robot).
 
 ### Config schema
@@ -87,14 +84,14 @@ Run from `workflows/` (the directory containing `project.yaml`):
 
 ```bash
 # interactive trigger picker
-cre workflow simulate ./automation --target=ethereum-agents-production-settings
+cre workflow simulate ./automation --target=agents-1-production-settings
 
 # a single robot, non-interactively (trigger order = config "automations" order)
-cre workflow simulate ./automation --target=avalanche-agents-production-settings --non-interactive --trigger-index=3
+cre workflow simulate ./automation --target=agents-1-production-settings --non-interactive --trigger-index=3
 ```
 
-Or via make from the repo root: `make simulate chain=ethereum` /
-`make simulate-one chain=avalanche i=3`.
+Or via make from the repo root: `make simulate target=agents-1` /
+`make simulate-one target=agents-1 i=3`.
 
 Simulation performs the full off-chain logic including `checkUpkeep` reads and
 gas estimation, but does not submit any transactions.
@@ -104,19 +101,19 @@ gas estimation, but does not submit any transactions.
 `--unsigned` prints the raw tx for the owner Safe to propose (it does not broadcast):
 
 ```bash
-cre workflow deploy   ./automation --target=ethereum-agents-production-settings --unsigned
-cre workflow activate ./automation --target=ethereum-agents-production-settings --unsigned --yes
+cre workflow deploy   ./automation --target=agents-1-production-settings --unsigned
+cre workflow activate ./automation --target=agents-1-production-settings --unsigned --yes
 ```
 
-Or: `make deploy-automation chain=ethereum` / `make activate-automation chain=ethereum`. The workflow
-name per target is set in `workflow.yaml` (e.g. `automation-ethereum-agents`).
+Or: `make deploy-automation target=agents-1` / `make activate-automation target=agents-1`. The workflow
+name per target is set in `workflow.yaml` (e.g. `automation-agents-1`).
 Deploying again with the same name updates the existing workflow.
 
 ## Adding a robot / network
 
-1. Add an entry to the `automations` array in the relevant `config.<chain>-agents.json`
-   (or add a new `config.<chain>-agents.json` + a target in `workflow.yaml` and
-   `project.yaml` for a new network):
+1. Add an entry to the `automations` array in the relevant config file
+   (or add a new config file + a target in `workflow.yaml` and
+   `project.yaml` for a new network or group):
 
    ```json
    {

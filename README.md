@@ -33,7 +33,7 @@ workflows/
 ├── automation/                        # migration engine + per-network robot lists
 │   ├── main.ts, handlers.ts, processAutomation.ts, types.ts
 │   ├── workflow.yaml                  # one target per network
-│   └── config.<chain>-agents.json     # robots to automate on each chain
+│   └── config.*.json                  # robot groups (agents-1/2, gov-1/2)
 ├── contracts/abi/                     # ABIs the migration engine uses (ICLAutomation, IMailboxCRE)
 ├── mailbox/                           # MailboxCRE receiver/forwarder + deploy scripts + registry
 └── <robot-name>/                      # one folder per native robot - onchain + offchain co-located
@@ -97,7 +97,7 @@ Per-workflow TS typechecks and offchain unit tests are wired separately (e.g. `m
 
 Generic offchain test helpers (`encodeCheckUpkeepResult`, `mockLog`, `mockReceipt`) live in [`workflows/shared/offchain/testing/mocks.ts`](workflows/shared/offchain/testing/mocks.ts) and are reusable from any robot's `workflow.test.ts`.
 
-For the migration automation: `make simulate chain=ethereum` (or `make simulate-one chain=avalanche i=3`) runs a network's workflow against mainnet; `make deploy-automation chain=ethereum` / `make activate-automation chain=ethereum` produce the unsigned lifecycle tx for the owner Safe.
+For the migration automation: `make simulate target=agents-1` (or `make simulate-one target=agents-1 i=3`) runs a workflow against mainnet; `make deploy-automation target=agents-1` / `make activate-automation target=agents-1` produce the unsigned lifecycle tx for the owner Safe.
 
 CI (`.github/workflows/main.yml`) runs the foundry suite (unit + fork tests), the TS typecheck, and the offchain bun tests on every PR. `secrets.ALCHEMY_API_KEY` must be available to the workflow (typically inherited from the org); CI constructs `RPC_MAINNET` from it for the fork-tests step, which fails hard if the secret is missing. The fork test itself only reads `RPC_MAINNET` — no hardcoded provider.
 
@@ -105,7 +105,7 @@ CI (`.github/workflows/main.yml`) runs the foundry suite (unit + fork tests), th
 
 Native-robot deployments use a foundry-managed keystore account. Create one with `cast wallet import <name>`, set `ACCOUNT_NAME=<name>` in `.env`, then run the per-robot make targets (e.g. `make deploy-fee-shares-minter env=Mainnet dry=true` to simulate, `make deploy-fee-shares-minter env=Mainnet` to broadcast). See each robot's README for the available targets.
 
-The migration automation workflows are deployed through the owner Safe via `cre workflow deploy ... --unsigned` (`make deploy-automation chain=<chain>`); `MailboxCRE` itself ships with per-chain forge deploy scripts in [`workflows/mailbox`](workflows/mailbox).
+The migration automation workflows are deployed through the owner Safe via `cre workflow deploy ... --unsigned` (`make deploy-automation target=<target>`); `MailboxCRE` itself ships with per-chain forge deploy scripts in [`workflows/mailbox`](workflows/mailbox).
 
 ## Adding a new robot
 
@@ -116,4 +116,4 @@ The migration automation workflows are deployed through the owner Safe via `cre 
 5. `offchain/` — the CRE workflow. Required files: `main.ts` (entry point), `workflow.ts` (handler + config schema), `workflow.yaml` (CRE workflow settings, with a `workflow-name` unique to this robot), `config.staging.json` / `config.production.json`, plus its own `package.json` and `tsconfig.json` (the latter must include `../../shared/offchain/**/*.ts`). See [`workflows/fee-shares-minter/offchain`](workflows/fee-shares-minter/offchain) for a reference shape. The shared `checkAndReport` helper is reusable when `onReport` is permissionless and the robot's `performData` is exactly the bytes you'd pass as `report`; for Mailbox-style permissioned `onReport`, write the post-`checkUpkeep` step in the workflow itself.
 6. Add a row to the **Robots** table above with a link to the new folder's README.
 
-> To automate an **already-deployed** robot instead of building a new contract, add it to the relevant `workflows/automation/config.<chain>-agents.json` (see [`workflows/automation`](workflows/automation)) rather than creating a new folder.
+> To automate an **already-deployed** robot instead of building a new contract, add it to the relevant `workflows/automation/config.*.json` (see [`workflows/automation`](workflows/automation)) rather than creating a new folder.

@@ -50,3 +50,36 @@ agents-2-production-settings:
       url: ${RPC_BASE}
     - chain-name: binance_smart_chain-mainnet
       url: ${RPC_BNB}
+
+# Governance robots (Execution / Governance / Voting Chain Robots via MailboxCRE).
+# 11 robots split across two workflows to fit the 10-trigger limit.
+
+# ethereum (3) + avalanche (2) = 5 triggers
+gov-1-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: ${RPC_MAINNET}
+    - chain-name: avalanche-mainnet
+      url: ${RPC_AVALANCHE}
+
+# polygon (2) + optimism + arbitrum + base + bnb (1 each) = 6 triggers
+gov-2-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: ${RPC_MAINNET}
+    - chain-name: polygon-mainnet
+      url: ${RPC_POLYGON}
+    - chain-name: ethereum-mainnet-optimism-1
+      url: ${RPC_OPTIMISM}
+    - chain-name: ethereum-mainnet-arbitrum-1
+      url: ${RPC_ARBITRUM}
+    - chain-name: ethereum-mainnet-base-1
+      url: ${RPC_BASE}
+    - chain-name: binance_smart_chain-mainnet
+      url: ${RPC_BNB}

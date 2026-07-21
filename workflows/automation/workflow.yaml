@@ -22,3 +22,24 @@ agents-2-production-settings:
     workflow-path: "./main.ts"
     config-path: "./config.agents-2.json"
     secrets-path: ""
+
+# Governance robots (Execution / Governance / Voting Chain Robots) via MailboxCRE.
+# 11 robots split across two workflows to stay within the 10-trigger limit.
+
+# ethereum (3) + avalanche (2) = 5 triggers. Schedule */5 (5 min)
+gov-1-production-settings:
+  user-workflow:
+    workflow-name: "automation-gov-1"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.gov-1.json"
+    secrets-path: ""
+
+# polygon (2) + optimism + arbitrum + base + bnb (1 each) = 6 triggers. Schedule */5 (5 min)
+gov-2-production-settings:
+  user-workflow:
+    workflow-name: "automation-gov-2"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.gov-2.json"
+    secrets-path: ""

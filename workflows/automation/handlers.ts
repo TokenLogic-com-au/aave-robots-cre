@@ -48,7 +48,7 @@ export const createHandlers = (config: Config) => {
   const trigger = new CronCapability().trigger({schedule: config.schedule});
 
   return config.evms
-    .filter((network) => network.chainName && network.automations.length > 0)
+    .filter((network) => network.chainName)
     .flatMap((network) =>
       network.automations
         .filter((automation) => automation.address)

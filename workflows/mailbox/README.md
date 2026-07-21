@@ -13,7 +13,7 @@ the report into `(address target, bytes calldata)` and forwards the call.
 
 ## Deployed addresses
 
-These are the `mailboxAddress` values wired into each `workflows/automation/config.<chain>-agents.json`.
+These are the `mailboxAddress` values wired into the `workflows/automation/config.*.json` files.
 
 | Chain | CRE chain selector | MailboxCRE |
 |-------|--------------------|-----------|
@@ -40,4 +40,4 @@ forge script workflows/mailbox/scripts/MailboxCRE.s.sol:DeployBase \
 ```
 
 After deploying, set the printed address as `mailboxAddress` in that chain's
-`workflows/automation/config.<chain>-agents.json`.
+entry in the relevant `workflows/automation/config.*.json`.
