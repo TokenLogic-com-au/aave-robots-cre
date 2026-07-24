@@ -13,6 +13,54 @@ This repo is the long-term home for **all** Aave CRE automations, organized unde
 | MailboxCRE | [`workflows/mailbox`](workflows/mailbox) | The on-chain receiver/forwarder used by the automation workflow + per-chain deploy scripts + deployed-address registry. |
 
 See each folder's README for the contract design, test instructions, deploy flow and CRE workflow config.
+`
+## Deployed automation robots
+
+Existing protocol/governance robots driven through `MailboxCRE` (referenced by
+address, none redeployed). All workflows are owned by the proxied-guardian Safe
+`0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B` on the CRE `WorkflowRegistry`.
+
+### Protocol robots (live)
+
+| Robot | Network | Address | CRE Workflow |
+| --- | --- | --- | --- |
+| StataToken Rewards (Core) | Ethereum | `0x892B74CD3703B427CD90e7f140F358A1DE1EA703` | [agents-1](https://app.chain.link/cre/workflows/0fc6cf62-a2b7-4ea7-a20e-b90dd540212a) |
+| StataToken Rewards (Prime) | Ethereum | `0x858f50cB70e6476d37543275aF4c738Ae8a27893` | [agents-1](https://app.chain.link/cre/workflows/0fc6cf62-a2b7-4ea7-a20e-b90dd540212a) |
+| Slashing | Ethereum | `0x4216d695070ce243e48A3bB0646CaA4DDB81B957` | [agents-1](https://app.chain.link/cre/workflows/0fc6cf62-a2b7-4ea7-a20e-b90dd540212a) |
+| GSM Freezer (USDC) | Ethereum | `0x6e51936e0ED4256f9dA4794B536B619c88Ff0047` | [agents-1](https://app.chain.link/cre/workflows/0fc6cf62-a2b7-4ea7-a20e-b90dd540212a) |
+| GSM Freezer (USDT) | Ethereum | `0x733AB16005c39d07FD3D9d1A350AA6768D10125b` | [agents-1](https://app.chain.link/cre/workflows/0fc6cf62-a2b7-4ea7-a20e-b90dd540212a) |
+| StataToken Rewards | Avalanche | `0x43C6b39669355AF93DdEdc70e8eB44c226f09BFB` | [agents-1](https://app.chain.link/cre/workflows/0fc6cf62-a2b7-4ea7-a20e-b90dd540212a) |
+| Cap Agent | Avalanche | `0xe4E91893Dd64c48FC2F20410F37f203259ECA896` | [agents-1](https://app.chain.link/cre/workflows/0fc6cf62-a2b7-4ea7-a20e-b90dd540212a) |
+| Proof of Reserve | Avalanche | `0x7aE2930B50CFEbc99FE6DB16CE5B9C7D8d09332C` | [agents-1](https://app.chain.link/cre/workflows/0fc6cf62-a2b7-4ea7-a20e-b90dd540212a) |
+| Proof of Reserve (V2) | Avalanche | `0x7aE2930B50CFEbc99FE6DB16CE5B9C7D8d09332C` | [agents-1](https://app.chain.link/cre/workflows/0fc6cf62-a2b7-4ea7-a20e-b90dd540212a) |
+| StataToken Rewards | Polygon | `0x1d8347B427964fad8a742e7f9442a4E89346400a` | [agents-2](https://app.chain.link/cre/workflows/f2a92ab7-170b-46dd-b166-b0f8c0f7f36b) |
+| Cap Agent | Polygon | `0x125844D33F75090517Ea19Aab8Ca24eEa4Fef764` | [agents-2](https://app.chain.link/cre/workflows/f2a92ab7-170b-46dd-b166-b0f8c0f7f36b) |
+| StataToken Rewards | Optimism | `0x365d47ceD3D7Eb6a9bdB3814aA23cc06B2D33Ef8` | [agents-2](https://app.chain.link/cre/workflows/f2a92ab7-170b-46dd-b166-b0f8c0f7f36b) |
+| Cap Agent | Optimism | `0xEed80d79ae1383884b93d96bd1521F7247EC7e53` | [agents-2](https://app.chain.link/cre/workflows/f2a92ab7-170b-46dd-b166-b0f8c0f7f36b) |
+| StataToken Rewards | Arbitrum | `0xF01281a6DfDe5506C5049c9BBf8C7E087b9bD4bF` | [agents-2](https://app.chain.link/cre/workflows/f2a92ab7-170b-46dd-b166-b0f8c0f7f36b) |
+| Cap Agent | Arbitrum | `0xFf822f7E2178176bB650df82427a42cA0c04CcaB` | [agents-2](https://app.chain.link/cre/workflows/f2a92ab7-170b-46dd-b166-b0f8c0f7f36b) |
+| StataToken Rewards | Base | `0x97CB9e81d480A2AB03299760654C1DDC0C16bE07` | [agents-2](https://app.chain.link/cre/workflows/f2a92ab7-170b-46dd-b166-b0f8c0f7f36b) |
+| Cap Agent | Base | `0x78C2eCf3Ad48F90350f42EB338675cA1b31a7f11` | [agents-2](https://app.chain.link/cre/workflows/f2a92ab7-170b-46dd-b166-b0f8c0f7f36b) |
+| StataToken Rewards | BNB | `0x9062F78b631f33D24Ed058cBc116A653452ea82A` | [agents-2](https://app.chain.link/cre/workflows/f2a92ab7-170b-46dd-b166-b0f8c0f7f36b) |
+| Cap Agent | BNB | `0x78C2eCf3Ad48F90350f42EB338675cA1b31a7f11` | [agents-2](https://app.chain.link/cre/workflows/f2a92ab7-170b-46dd-b166-b0f8c0f7f36b) |
+
+### Governance robots (live)
+
+| Robot | Network | Address | CRE Workflow |
+| --- | --- | --- | --- |
+| Gas Capped Execution Chain Robot | Ethereum | `0xBa37F9eDC52f57caFA3a13ddfD655797Cc4FE257` | [gov-1](https://app.chain.link/cre/workflows/d159dc83-cc98-4bff-aa85-3327a2e3bc42) |
+| Gas Capped Governance Chain Robot | Ethereum | `0x1996c281235D99bB3c6B8d2afbEb8ac6c7A39C11` | [gov-1](https://app.chain.link/cre/workflows/d159dc83-cc98-4bff-aa85-3327a2e3bc42) |
+| Gas Capped Voting Chain Robot | Ethereum | `0xbC3210bfff692a5bbDBB068D42Ab4eAF28b01Ee0` | [gov-1](https://app.chain.link/cre/workflows/d159dc83-cc98-4bff-aa85-3327a2e3bc42) |
+| Execution Chain Robot | Avalanche | `0x7B74938583Eb03e06042fcB651046BaF0bf15644` | [gov-1](https://app.chain.link/cre/workflows/d159dc83-cc98-4bff-aa85-3327a2e3bc42) |
+| Voting Chain Robot | Avalanche | `0x2cf0fA5b36F0f89a5EA18F835d1375974a7720B8` | [gov-1](https://app.chain.link/cre/workflows/d159dc83-cc98-4bff-aa85-3327a2e3bc42) |
+| Execution Chain Robot | Polygon | `0x249396a890F89D47F89326d7EE116b1d374fb3A9` | [gov-2](https://app.chain.link/cre/workflows/d96b69de-ba5e-4c58-abae-0d2dace3617f) |
+| Voting Chain Robot | Polygon | `0x1180eE41eC15Dd0accC13a1e646B3152bECFf8F6` | [gov-2](https://app.chain.link/cre/workflows/d96b69de-ba5e-4c58-abae-0d2dace3617f) |
+| Execution Chain Robot | Optimism | `0xa0195539e21A6553243344A3BE6b874B5d3EC7b9` | [gov-2](https://app.chain.link/cre/workflows/d96b69de-ba5e-4c58-abae-0d2dace3617f) |
+| Execution Chain Robot | Arbitrum | `0x64093fe5f8Cf62aFb4377cf7EF4373537fe9155B` | [gov-2](https://app.chain.link/cre/workflows/d96b69de-ba5e-4c58-abae-0d2dace3617f) |
+| Execution Chain Robot | Base | `0xdb93e2712a8B36835078f8D28c70fCC95FD6d37c` | [gov-2](https://app.chain.link/cre/workflows/d96b69de-ba5e-4c58-abae-0d2dace3617f) |
+| Execution Chain Robot | BNB | `0x870F5EBf5C13B73251283b2d883988066e2bb732` | [gov-2](https://app.chain.link/cre/workflows/d96b69de-ba5e-4c58-abae-0d2dace3617f) |
+
+`MailboxCRE` addresses per chain are listed in [`workflows/mailbox/README.md`](workflows/mailbox/README.md).
 
 ## Two patterns
 
