@@ -1,0 +1,14 @@
+{
+  "schedule": "*/5 * * * *",
+  "evms": [
+    {
+      "chainName": "avalanche-mainnet",
+      "isTestnet": false,
+      "receiver": "",
+      "executors": [
+        "0x7fc3FCb14eF04A48Bb0c12f0c39CD74C249c37d8",
+        "0xB94e515615c244Ab25f7A6e592e3Cb7EE31E99F4"
+      ]
+    }
+  ]
+}
