@@ -9,6 +9,7 @@ This repo is the long-term home for **all** Aave CRE automations. Each robot liv
 | Robot           | Folder                                                       | What it does                                                                       |
 | --------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
 | FeeSharesMinter | [`workflows/fee-shares-minter`](workflows/fee-shares-minter) | Mints accrued fee shares on Aave v4 hubs once a configurable threshold is crossed. |
+| ProofOfReserve  | [`workflows/proof-of-reserve`](workflows/proof-of-reserve)   | Runs an Aave Proof of Reserve executor's emergency action when a reserve is unbacked. |
 
 See each robot's README for the contract design, test instructions, deploy flow and CRE workflow config.
 
