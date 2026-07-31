@@ -9,3 +9,15 @@ production-settings:
   rpcs:
     - chain-name: ethereum-mainnet
       url: https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}
+
+# ProofOfReserve — Avalanche only (ethereum-mainnet is required for the WorkflowRegistry).
+# Owner is the proxied-guardian Safe used by the other Aave CRE workflows.
+proof-of-reserve-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: ${RPC_MAINNET}
+    - chain-name: avalanche-mainnet
+      url: ${RPC_AVALANCHE}
