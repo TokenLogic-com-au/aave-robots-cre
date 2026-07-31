@@ -64,6 +64,15 @@ jobs:
       - name: Offchain tests
         working-directory: workflows/fee-shares-minter/offchain
         run: bun test
+      - name: Install workflow deps (refresh-rewards)
+        working-directory: workflows/refresh-rewards/offchain
+        run: npm ci
+      - name: Typecheck (refresh-rewards)
+        working-directory: workflows/refresh-rewards/offchain
+        run: npm run typecheck
+      - name: Offchain tests (refresh-rewards)
+        working-directory: workflows/refresh-rewards/offchain
+        run: bun test
 
   abis-up-to-date:
     runs-on: ubuntu-latest
