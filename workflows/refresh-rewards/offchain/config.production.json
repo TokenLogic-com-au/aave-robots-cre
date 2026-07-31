@@ -1,0 +1,86 @@
+{
+  "schedule": "0 11 * * *",
+  "evms": [
+    {
+      "chainName": "ethereum-mainnet",
+      "isTestnet": false,
+      "receiver": "",
+      "pools": [
+        {
+          "factory": "0xCb0b5cA20b6C5C02A9A3B2cE433650768eD2974F",
+          "controller": "0x8164Cc65827dcFe994AB23944CBC90e0aa80bFcb"
+        },
+        {
+          "factory": "0x347C75d19718a05148687E13dca259aD016aB411",
+          "controller": "0x8164Cc65827dcFe994AB23944CBC90e0aa80bFcb"
+        }
+      ]
+    },
+    {
+      "chainName": "avalanche-mainnet",
+      "isTestnet": false,
+      "receiver": "",
+      "pools": [
+        {
+          "factory": "0xC2E7A608d868817dd58438913Ed72955a0567561",
+          "controller": "0x929EC64c34a17401F460460D4B9390518E5B473e"
+        }
+      ]
+    },
+    {
+      "chainName": "polygon-mainnet",
+      "isTestnet": false,
+      "receiver": "",
+      "pools": [
+        {
+          "factory": "0x1504F1d7b6892600ae0d394F9042e696dd9F87Fa",
+          "controller": "0x929EC64c34a17401F460460D4B9390518E5B473e"
+        }
+      ]
+    },
+    {
+      "chainName": "ethereum-mainnet-optimism-1",
+      "isTestnet": false,
+      "receiver": "",
+      "pools": [
+        {
+          "factory": "0x170d6D6FCAbF0Ba3932a03d5f470c16c39c18e39",
+          "controller": "0x929EC64c34a17401F460460D4B9390518E5B473e"
+        }
+      ]
+    },
+    {
+      "chainName": "ethereum-mainnet-arbitrum-1",
+      "isTestnet": false,
+      "receiver": "",
+      "pools": [
+        {
+          "factory": "0xd85922fFF51ba4130cEC7c499db4Ac3Eb9981EaD",
+          "controller": "0x929EC64c34a17401F460460D4B9390518E5B473e"
+        }
+      ]
+    },
+    {
+      "chainName": "ethereum-mainnet-base-1",
+      "isTestnet": false,
+      "receiver": "",
+      "pools": [
+        {
+          "factory": "0x78d33BF0014ab169725F2Ea5a62b200F2977faeE",
+          "controller": "0xf9cc4F0D883F1a1eb2c253bdb46c254Ca51E1F44"
+        }
+      ]
+    },
+    {
+      "chainName": "binance_smart_chain-mainnet",
+      "isTestnet": false,
+      "receiver": "",
+      "pools": [
+        {
+          "factory": "0x929B8a21a604b93DD7e95d5b9aAa3aDf5bE250ae",
+          "controller": "0xC206C2764A9dBF27d599613b8F9A63ACd1160ab4"
+        }
+      ]
+    }
+  ]
+}
