@@ -1,0 +1,10 @@
+# ==========================================================================
+# CRE WORKFLOW SETTINGS — RefreshRewards
+# ==========================================================================
+refresh-rewards-production-settings:
+  user-workflow:
+    workflow-name: "refresh-rewards-production"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.production.json"
+    secrets-path: ""

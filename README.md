@@ -6,9 +6,10 @@ This repo is the long-term home for **all** Aave CRE automations. Each robot liv
 
 ## Robots
 
-| Robot           | Folder                                                       | What it does                                                                       |
-| --------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| FeeSharesMinter | [`workflows/fee-shares-minter`](workflows/fee-shares-minter) | Mints accrued fee shares on Aave v4 hubs once a configurable threshold is crossed. |
+| Robot           | Folder                                                       | What it does                                                                              |
+| --------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| FeeSharesMinter | [`workflows/fee-shares-minter`](workflows/fee-shares-minter) | Mints accrued fee shares on Aave v4 hubs once a configurable threshold is crossed.        |
+| RefreshRewards  | [`workflows/refresh-rewards`](workflows/refresh-rewards)     | Registers reward tokens on Aave v3 stataTokens when a reward is added after their creation. |
 
 See each robot's README for the contract design, test instructions, deploy flow and CRE workflow config.
 
