@@ -49,8 +49,6 @@ contract RefreshRewardsReceiverTest is Test {
     robot = new RefreshRewardsReceiver(owner, guardian);
   }
 
-  // --- metadata -----------------------------------------------------------
-
   function test_constructor_setsOwnerAndGuardian() public view {
     assertEq(robot.owner(), owner);
     assertEq(robot.guardian(), guardian);
@@ -66,8 +64,6 @@ contract RefreshRewardsReceiverTest is Test {
     assertTrue(robot.supportsInterface(type(IERC165).interfaceId));
     assertFalse(robot.supportsInterface(0xffffffff));
   }
-
-  // --- checkUpkeep --------------------------------------------------------
 
   function test_checkUpkeep_returnsFalse_whenNoStataTokens() public {
     _mockStataTokens(new address[](0));
@@ -143,8 +139,6 @@ contract RefreshRewardsReceiverTest is Test {
     assertEq(picked.length, robot.MAX_ACTIONS());
   }
 
-  // --- onReport -----------------------------------------------------------
-
   function test_onReport_refreshes_whenAnyoneCalls() public {
     _mockStataTokens(_one(stataA));
     _mockRewards(aTokenA, _one(reward));
@@ -181,8 +175,6 @@ contract RefreshRewardsReceiverTest is Test {
     robot.onReport('', abi.encode(controller, _two(stataA, stataB)));
   }
 
-  // --- admin --------------------------------------------------------------
-
   function test_setAutomationDisabled_byOwner() public {
     vm.expectEmit(address(robot));
     emit IRefreshRewardsReceiver.AutomationDisabledSet(stataA, true);
@@ -205,8 +197,6 @@ contract RefreshRewardsReceiverTest is Test {
     );
     robot.setAutomationDisabled(stataA, true);
   }
-
-  // --- mock helpers -------------------------------------------------------
 
   function _checkData() internal view returns (bytes memory) {
     return abi.encode(factory, controller);
