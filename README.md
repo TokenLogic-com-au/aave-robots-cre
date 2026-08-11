@@ -9,6 +9,7 @@ This repo is the long-term home for **all** Aave CRE automations. Each robot liv
 | Robot           | Folder                                                       | What it does                                                                       |
 | --------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
 | FeeSharesMinter | [`workflows/fee-shares-minter`](workflows/fee-shares-minter) | Mints accrued fee shares on Aave v4 hubs once a configurable threshold is crossed. |
+| GsmFreezer      | [`workflows/gsm-freezer`](workflows/gsm-freezer)             | Freezes (and unfreezes) GSM swaps when the underlying's oracle price leaves a configured band. |
 
 See each robot's README for the contract design, test instructions, deploy flow and CRE workflow config.
 
