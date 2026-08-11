@@ -1,7 +1,7 @@
 import {z} from 'zod';
 
-/// A (stataToken factory, rewards controller) pair. One Aave pool = one pair;
-/// a chain with several pools (e.g. Ethereum Core + Prime) lists several.
+// A (stataToken factory, rewards controller) pair. One Aave pool = one pair;
+// a chain with several pools (e.g. Ethereum Core + Prime) lists several.
 export const poolSchema = z.object({
   factory: z.string(),
   controller: z.string(),
