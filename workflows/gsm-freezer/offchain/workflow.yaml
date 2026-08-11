@@ -1,0 +1,10 @@
+# ==========================================================================
+# CRE WORKFLOW SETTINGS — GSM Freezer
+# ==========================================================================
+gsm-freezer-production-settings:
+  user-workflow:
+    workflow-name: "gsm-freezer-production"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.production.json"
+    secrets-path: ""
