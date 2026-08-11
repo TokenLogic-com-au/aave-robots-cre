@@ -10,9 +10,9 @@ type EvmClient = InstanceType<typeof cre.capabilities.EVMClient>;
 
 const CHECK_DATA_TYPE = parseAbiParameters('address factory, address controller');
 
-/// The receiver's `checkUpkeep` takes `(factory, controller)` and does the
-/// stataToken enumeration + unregistered-reward scan itself, so the workflow
-/// only forwards the pool addresses — no off-chain reads needed.
+// The receiver's `checkUpkeep` takes `(factory, controller)` and does the
+// stataToken enumeration + unregistered-reward scan itself, so the workflow
+// only forwards the pool addresses — no off-chain reads needed.
 function encodeCheckData(pool: Pool): Hex {
   return encodeAbiParameters(CHECK_DATA_TYPE, [pool.factory as Hex, pool.controller as Hex]);
 }

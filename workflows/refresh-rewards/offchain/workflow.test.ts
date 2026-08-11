@@ -27,7 +27,7 @@ const PERFORM_DATA = '0xdeadbeef' as Hex;
 const POOL = {factory: FACTORY, controller: CONTROLLER};
 const NETWORK = {chainName: CHAIN_NAME, isTestnet: false, receiver: RECEIVER, pools: [POOL]};
 
-/// Mock `callContract` for a single `checkUpkeep` call, returning the given result.
+// Mock `callContract` for a single `checkUpkeep` call, returning the given result.
 function checkUpkeepMock(upkeepNeeded: boolean, performData: Hex = PERFORM_DATA) {
   return (req: CallContractInput): {data: Uint8Array} => {
     const selector = bytesToHex(req.call.data).slice(0, 10).toLowerCase();

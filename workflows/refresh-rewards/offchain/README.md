@@ -31,11 +31,11 @@ cd workflows/refresh-rewards/offchain && npm install   # or `make install` from 
 
 ```bash
 # from workflows/ (the directory with project.yaml)
-cre workflow simulate ./refresh-rewards/offchain --target=production-settings --non-interactive --trigger-index=0
+cre workflow simulate ./refresh-rewards/offchain --target=refresh-rewards-production-settings --non-interactive --trigger-index=0
 
 # --unsigned prints the tx for the owner Safe to propose (does not broadcast)
-cre workflow deploy   ./refresh-rewards/offchain --target=production-settings --unsigned
-cre workflow activate ./refresh-rewards/offchain --target=production-settings --unsigned --yes
+cre workflow deploy   ./refresh-rewards/offchain --target=refresh-rewards-production-settings --unsigned
+cre workflow activate ./refresh-rewards/offchain --target=refresh-rewards-production-settings --unsigned --yes
 ```
 
 Or via the `package.json` scripts (`npm run simulate:production`,
