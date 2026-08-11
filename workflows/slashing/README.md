@@ -60,7 +60,7 @@ The fork suite forks Ethereum mainnet against the live
 asserts the minimal local interfaces match the real deployed ABIs across the read
 path, and exercises both the revert path (a non-slashable reserve →
 `NoSlashesPerformed`) and the slash path (scans for a reserve with a live deficit;
-skips if none is). It skips entirely when `RPC_MAINNET` is unset.
+skips if none is). It requires `RPC_MAINNET` (the fork `setUp` reverts if unset).
 
 `workflow.test.ts` mocks the cre-sdk EVM client via `EvmMock` and drives
 `createReceiverHandler` end-to-end for each branch. Generic helpers
