@@ -1,0 +1,10 @@
+{
+  "schedule": "*/5 * * * *",
+  "evms": [
+    {
+      "chainName": "ethereum-mainnet",
+      "isTestnet": false,
+      "receiver": ""
+    }
+  ]
+}

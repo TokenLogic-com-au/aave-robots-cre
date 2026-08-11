@@ -64,6 +64,15 @@ jobs:
       - name: Offchain tests
         working-directory: workflows/fee-shares-minter/offchain
         run: bun test
+      - name: Install workflow deps (slashing)
+        working-directory: workflows/slashing/offchain
+        run: npm ci
+      - name: Typecheck (slashing)
+        working-directory: workflows/slashing/offchain
+        run: npm run typecheck
+      - name: Offchain tests (slashing)
+        working-directory: workflows/slashing/offchain
+        run: bun test
 
   abis-up-to-date:
     runs-on: ubuntu-latest
