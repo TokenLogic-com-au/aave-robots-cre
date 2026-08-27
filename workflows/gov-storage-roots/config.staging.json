@@ -1,0 +1,10 @@
+{
+  "ethereumChainSelectorName": "ethereum-testnet-sepolia",
+  "governanceAddress": "0x0000000000000000000000000000000000000000",
+  "tokens": {
+    "aave": "0x0000000000000000000000000000000000000000",
+    "aAave": "0x0000000000000000000000000000000000000000",
+    "stkAave": "0x0000000000000000000000000000000000000000"
+  },
+  "votingNetworks": []
+}

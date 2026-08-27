@@ -1,0 +1,29 @@
+{
+  "ethereumChainSelectorName": "ethereum-mainnet",
+  "governanceAddress": "0x9AEE0B04504CeF83A65AC3f0e838D0593BCb2BC7",
+  "tokens": {
+    "aave": "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9",
+    "aAave": "0xA700b4eB416Be35b2911fd5Dee80678ff64fF6C9",
+    "stkAave": "0x4da27a545c0c5B758a6BA100e3a049001de870f5"
+  },
+  "votingNetworks": [
+    {
+      "votingPortalAddress": "0x6ACe1Bf22D57a33863161bFDC851316Fb0442690",
+      "chainSelectorName": "ethereum-mainnet",
+      "dataWarehouseAddress": "0xa638c14525CAEE8e498A67b409CCb1B7b34c3981",
+      "mailboxAddress": "0x14fa87C3B5F1b95444D1b4Ed9A8fC8516D5d23bF"
+    },
+    {
+      "votingPortalAddress": "0x9Ded9406f088C10621BE628EEFf40c1DF396c172",
+      "chainSelectorName": "avalanche-mainnet",
+      "dataWarehouseAddress": "0x450820e342B731b542caA5328d06F26528914dDd",
+      "mailboxAddress": "0xd44fdbf583e67adb84e530ae5cc784ad5315f022"
+    },
+    {
+      "votingPortalAddress": "0xFe4683C18aaad791B6AFDF0a8e1Ed5C6e2c9ecD6",
+      "chainSelectorName": "polygon-mainnet",
+      "dataWarehouseAddress": "0xE3D355a9E58D59Ad11F318deAED528f79A9C1e5a",
+      "mailboxAddress": "0x0FC9eB644dF453B53C7d9A6892c878f14382ddc3"
+    }
+  ]
+}

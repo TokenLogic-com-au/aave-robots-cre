@@ -83,3 +83,27 @@ gov-2-production-settings:
       url: ${RPC_BASE}
     - chain-name: binance_smart_chain-mainnet
       url: ${RPC_BNB}
+
+# Governance storage-roots robot (log-triggered on VotingActivated). One trigger
+# on ethereum-mainnet; writes to the DataWarehouse on the proposal's voting chain
+# (ethereum / avalanche / polygon) via MailboxCRE. Account/storage proofs are
+# fetched off-chain via ConfidentialHTTPClient using the ETH_RPC_URL secret.
+gov-roots-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: ${RPC_MAINNET}
+    - chain-name: avalanche-mainnet
+      url: ${RPC_AVALANCHE}
+    - chain-name: polygon-mainnet
+      url: ${RPC_POLYGON}
+
+gov-roots-staging-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: ${RPC_SEPOLIA}
