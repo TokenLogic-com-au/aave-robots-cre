@@ -33,7 +33,7 @@ gov-1-production-settings:
   workflow-artifacts:
     workflow-path: "./main.ts"
     config-path: "./config.gov-1.json"
-    secrets-path: ""
+    secrets-path: "../secrets.yaml"
 
 # polygon (2) + optimism + arbitrum + base + bnb (1 each) = 6 triggers. Schedule */5 (5 min)
 gov-2-production-settings:

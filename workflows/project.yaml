@@ -64,6 +64,9 @@ gov-1-production-settings:
       url: ${RPC_MAINNET}
     - chain-name: avalanche-mainnet
       url: ${RPC_AVALANCHE}
+    # polygon is a voting chain for the roots handler (writes there when a proposal votes on Polygon)
+    - chain-name: polygon-mainnet
+      url: ${RPC_POLYGON}
 
 # polygon (2) + optimism + arbitrum + base + bnb (1 each) = 6 triggers
 gov-2-production-settings:

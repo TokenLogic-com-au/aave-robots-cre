@@ -1,6 +1,14 @@
-import {cre, CronCapability, getNetwork, handler, type Runtime} from '@chainlink/cre-sdk';
+import {
+  cre,
+  CronCapability,
+  getNetwork,
+  handler,
+  type HandlerEntry,
+  type Runtime,
+} from '@chainlink/cre-sdk';
 import {type Config} from './types';
 import {processAutomation} from './processAutomation';
+import {createRootsHandler} from './roots/handler';
 
 export const createAutomationHandler = (
   chainName: string,
@@ -47,7 +55,7 @@ export const createAutomationHandler = (
 export const createHandlers = (config: Config) => {
   const trigger = new CronCapability().trigger({schedule: config.schedule});
 
-  return config.evms
+  const handlers: HandlerEntry<Config, any, any, any>[] = config.evms
     .filter((network) => network.chainName)
     .flatMap((network) =>
       network.automations
@@ -65,4 +73,8 @@ export const createHandlers = (config: Config) => {
           ),
         ),
     );
+
+  if (config.roots) handlers.push(createRootsHandler(config.roots));
+
+  return handlers;
 };
