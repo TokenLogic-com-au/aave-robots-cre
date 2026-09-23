@@ -1,0 +1,10 @@
+# ==========================================================================
+# CRE WORKFLOW SETTINGS — GSM Fee Claimer
+# ==========================================================================
+gsm-fee-claimer-production-settings:
+  user-workflow:
+    workflow-name: "gsm-fee-claimer-production"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.production.json"
+    secrets-path: ""

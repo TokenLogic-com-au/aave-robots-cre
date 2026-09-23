@@ -1,0 +1,20 @@
+{
+  "schedule": "0 0 * * * *",
+  "evms": [
+    {
+      "chainName": "ethereum-mainnet",
+      "isTestnet": false,
+      "receiver": "",
+      "gsms": [
+        "0x3A3868898305f04beC7FEa77BecFf04C13444112",
+        "0x882285E62656b9623AF136Ce3078c6BdCc33F5E3"
+      ]
+    },
+    {
+      "chainName": "plasma-mainnet",
+      "isTestnet": false,
+      "receiver": "",
+      "gsms": ["0xd06114F714beCD6f373e5cE94E07278eF46eBF37"]
+    }
+  ]
+}
