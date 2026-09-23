@@ -9,6 +9,7 @@ This repo is the long-term home for **all** Aave CRE automations. Each robot liv
 | Robot           | Folder                                                       | What it does                                                                       |
 | --------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
 | FeeSharesMinter | [`workflows/fee-shares-minter`](workflows/fee-shares-minter) | Mints accrued fee shares on Aave v4 hubs once a configurable threshold is crossed. |
+| GsmFeeClaimer   | [`workflows/gsm-fee-claimer`](workflows/gsm-fee-claimer)     | Sends accrued GSM fees to the GHO treasury.                                        |
 
 See each robot's README for the contract design, test instructions, deploy flow and CRE workflow config.
 
