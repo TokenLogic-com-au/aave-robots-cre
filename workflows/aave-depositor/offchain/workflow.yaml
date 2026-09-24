@@ -1,0 +1,34 @@
+# ==========================================================================
+# CRE WORKFLOW SETTINGS — Aave Depositor (one workflow per chain)
+# ==========================================================================
+aave-depositor-ethereum-production-settings:
+  user-workflow:
+    workflow-name: "aave-depositor-ethereum-production"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.ethereum.json"
+    secrets-path: ""
+
+aave-depositor-arbitrum-production-settings:
+  user-workflow:
+    workflow-name: "aave-depositor-arbitrum-production"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.arbitrum.json"
+    secrets-path: ""
+
+aave-depositor-base-production-settings:
+  user-workflow:
+    workflow-name: "aave-depositor-base-production"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.base.json"
+    secrets-path: ""
+
+aave-depositor-optimism-production-settings:
+  user-workflow:
+    workflow-name: "aave-depositor-optimism-production"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.optimism.json"
+    secrets-path: ""
