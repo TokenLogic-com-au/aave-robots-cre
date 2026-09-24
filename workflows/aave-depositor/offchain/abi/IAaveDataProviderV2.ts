@@ -1,0 +1,44 @@
+// Aave V2 ProtocolDataProvider ABI (exact match from DataProviderV2.json)
+export const IAaveDataProviderV2 = [
+  {
+    inputs: [{internalType: 'address', name: 'asset', type: 'address'}],
+    name: 'getReserveData',
+    outputs: [
+      {internalType: 'uint256', name: 'availableLiquidity', type: 'uint256'},
+      {internalType: 'uint256', name: 'totalStableDebt', type: 'uint256'},
+      {internalType: 'uint256', name: 'totalVariableDebt', type: 'uint256'},
+      {internalType: 'uint256', name: 'liquidityRate', type: 'uint256'},
+      {internalType: 'uint256', name: 'variableBorrowRate', type: 'uint256'},
+      {internalType: 'uint256', name: 'stableBorrowRate', type: 'uint256'},
+      {
+        internalType: 'uint256',
+        name: 'averageStableBorrowRate',
+        type: 'uint256',
+      },
+      {internalType: 'uint256', name: 'liquidityIndex', type: 'uint256'},
+      {internalType: 'uint256', name: 'variableBorrowIndex', type: 'uint256'},
+      {internalType: 'uint40', name: 'lastUpdateTimestamp', type: 'uint40'},
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{internalType: 'address', name: 'asset', type: 'address'}],
+    name: 'getReserveTokensAddresses',
+    outputs: [
+      {internalType: 'address', name: 'aTokenAddress', type: 'address'},
+      {
+        internalType: 'address',
+        name: 'stableDebtTokenAddress',
+        type: 'address',
+      },
+      {
+        internalType: 'address',
+        name: 'variableDebtTokenAddress',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const;
