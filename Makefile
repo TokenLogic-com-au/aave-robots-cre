@@ -22,6 +22,9 @@ deploy-account :; forge script ${contract} --rpc-url ${chain} --account ${ACCOUN
 
 DEPLOY_CHAIN_Mainnet := mainnet
 DEPLOY_CHAIN_Devnet := tenderly_devnet
+DEPLOY_CHAIN_Arbitrum := arbitrum
+DEPLOY_CHAIN_Base := base
+DEPLOY_CHAIN_Optimism := optimism
 
 # Tenderly virtual testnets verify against <rpc-url>/verify with a custom verifier;
 # mainnet uses the default Etherscan verifier (foundry.toml [etherscan] + ETHERSCAN_API_KEY).
@@ -30,5 +33,5 @@ DEPLOY_VERIFIER_Devnet := --verifier custom --verifier-url $(RPC_TENDERLY_DEVNET
 deploy-fee-shares-minter :; @[ -n "$(DEPLOY_CHAIN_${env})" ] || { echo "ERROR: pass 'env=Mainnet' or 'env=Devnet'"; exit 1; }; \
 	make deploy-account contract=workflows/fee-shares-minter/scripts/DeployFeeSharesMinter.s.sol:DeployFeeSharesMinter chain=$(DEPLOY_CHAIN_${env}) verifier="$(DEPLOY_VERIFIER_${env})" dry=${dry}
 
-deploy-aave-depositor :; @[ -n "$(DEPLOY_CHAIN_${env})" ] || { echo "ERROR: pass 'env=Mainnet'"; exit 1; }; \
+deploy-aave-depositor :; @[ -n "$(DEPLOY_CHAIN_${env})" ] || { echo "ERROR: pass 'env=Mainnet', 'env=Arbitrum', 'env=Base' or 'env=Optimism'"; exit 1; }; \
 	make deploy-account contract=workflows/aave-depositor/scripts/DeployAaveDepositorReceiver.s.sol:DeployAaveDepositorReceiver chain=$(DEPLOY_CHAIN_${env}) verifier="$(DEPLOY_VERIFIER_${env})" dry=${dry}

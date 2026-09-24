@@ -11,7 +11,7 @@ import {MiscEthereum} from 'aave-address-book/MiscEthereum.sol';
 
 import {AaveDepositorReceiver} from '../src/AaveDepositorReceiver.sol';
 import {IAaveDepositorReceiver, IPoolExposureSteward} from '../src/IAaveDepositorReceiver.sol';
-import {AaveDepositorEthereum} from '../scripts/AaveDepositorEthereum.sol';
+import {AaveDepositorNetworks} from '../scripts/AaveDepositorNetworks.sol';
 
 interface IModuleManager {
   function enableModule(address module) external;
@@ -27,9 +27,9 @@ interface IRolesAdmin is IModuleManager {
 }
 
 contract AaveDepositorReceiverForkTest is Test {
-  address internal constant FORWARDER = AaveDepositorEthereum.FORWARDER;
-  address internal constant ROLES = AaveDepositorEthereum.ROLES;
-  bytes32 internal constant ROLE_KEY = AaveDepositorEthereum.ROLE_KEY;
+  address internal constant FORWARDER = AaveDepositorNetworks.ETHEREUM_FORWARDER;
+  address internal constant ROLES = AaveDepositorNetworks.ETHEREUM_ROLES;
+  bytes32 internal constant ROLE_KEY = AaveDepositorNetworks.ROLE_KEY;
   uint256 internal constant AMOUNT = 1_000_000e6;
 
   AaveDepositorReceiver internal robot;
