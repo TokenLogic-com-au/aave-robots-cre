@@ -25,13 +25,14 @@ gsm-fee-claimer/
 
 - `checkUpkeep(checkData) → (needed, gsms)` — read-only probe. `checkData` is
   `abi.encode(address[] gsms)`; the robot reads `getAccruedFees()` on each and
-  returns the subset with fees as `abi.encode(address[])`. A GSM whose read reverts
-  is skipped. Returns `(false, "")` while disabled, with empty `checkData`, or when
-  no GSM has fees.
+  returns the subset with fees as `abi.encode(address[])`. A GSM whose read
+  reverts, has no code or returns no data is skipped. Returns `(false, "")` while disabled, with empty
+  `checkData`, or when no GSM has fees.
 - `onReport(metadata, report)` — decodes `report` as `address[]` and, for every GSM
   that **still** has accrued fees, calls `distributeFeesToTreasury()`. One reverting
-  GSM emits `FeeDistributionFailed` and does not block the rest; reverts
-  `NothingToDistribute` if nothing was distributed. Re-reading the fees on-chain
+  GSM emits `FeeDistributionFailed(gsm, reason)` and does not block the rest; reverts
+  `Disabled` while disabled and `NothingToDistribute` if nothing was distributed
+  (no fees, or every GSM reverted). Re-reading the fees on-chain
   means a stale or forged report can only trigger distributions that are due.
   `FeesDistributed.amount` is the fee balance the GSM reported right before the
   call; a `Gsm4626` also folds its vault excess into the same distribution, so the
@@ -48,13 +49,16 @@ itself: the worst a caller can do is send fees to the treasury a little earlier.
 - `_disabled` — excludes the robot from automation. `checkUpkeep` and `onReport`
   both stand down while set. Toggled via `setDisabled(disabled)`, owner or guardian.
 
+The contract never holds tokens (the GSM pays the treasury directly), so unlike
+`FeeSharesMinter` it does not include `Rescuable`.
+
 ## Testing
 
 ```bash
 # from repo root
 forge test --match-path 'workflows/gsm-fee-claimer/tests/*.t.sol' --no-match-contract 'Fork' -vvv   # unit
 RPC_MAINNET=... forge test --match-contract 'GsmFeeClaimerReceiverFork' -vvv                        # fork
-cd workflows/gsm-fee-claimer/offchain && bun test                                                    # CRE workflow (bun)
+make test-offchain-gsm-fee-claimer                                                                 # CRE workflow (bun)
 ```
 
 ## Deploying
