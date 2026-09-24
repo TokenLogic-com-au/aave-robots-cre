@@ -3,7 +3,8 @@ import {encodeFunctionData, type Hex} from 'viem';
 import {ISteward} from '../abi/ISteward';
 import {applySupplyCapAdjustment, type SupplyCaps} from './caps';
 import {destinationPool, type ChainConfig} from './config';
-import {calculateUsdValue, formatUsd} from './math';
+import {calculateUsdValue} from './math';
+import {formatUsd} from './format';
 import type {ActiveReserve} from './reserves';
 
 export type StewardContext = {

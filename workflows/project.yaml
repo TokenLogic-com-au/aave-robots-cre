@@ -18,3 +18,27 @@ aave-depositor-ethereum-production-settings:
   rpcs:
     - chain-name: ethereum-mainnet
       url: ${RPC_MAINNET}
+
+aave-depositor-arbitrum-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: ethereum-mainnet-arbitrum-1
+      url: ${RPC_ARBITRUM}
+
+aave-depositor-base-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: ethereum-mainnet-base-1
+      url: ${RPC_BASE}
+
+aave-depositor-optimism-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+    workflow-name: "deployer"
+  rpcs:
+    - chain-name: ethereum-mainnet-optimism-1
+      url: ${RPC_OPTIMISM}
