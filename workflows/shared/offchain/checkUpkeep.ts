@@ -10,7 +10,7 @@ import {decodeFunctionResult, encodeFunctionData, zeroAddress, type Hex} from 'v
 
 import {IAaveCREReceiverABI} from './abi/IAaveCREReceiver';
 
-type EvmClient = InstanceType<typeof cre.capabilities.EVMClient>;
+export type EvmClient = InstanceType<typeof cre.capabilities.EVMClient>;
 
 /// Calls `checkUpkeep(checkData)` on the robot. Returns `performData` if the
 /// robot wants `onReport` submitted this tick, or `null` if not.
@@ -79,7 +79,19 @@ export function submitReport<TConfig>(
     runtime.log(`[${label}] estimateGas failed for onReport — skipping: ${e}`);
     return null;
   }
+  return writeSignedReport(runtime, evmClient, robotAddress, performData, label);
+}
 
+/// Signs `performData` and writes it to the robot, with the DON default gas limit
+/// unless `gasLimit` is given. Returns the tx hash, or `null` if the write failed.
+export function writeSignedReport<TConfig>(
+  runtime: Runtime<TConfig>,
+  evmClient: EvmClient,
+  robotAddress: string,
+  performData: Hex,
+  label: string,
+  gasLimit?: bigint,
+): string | null {
   const report = runtime
     .report({
       encodedPayload: hexToBase64(performData),
@@ -89,7 +101,13 @@ export function submitReport<TConfig>(
     })
     .result();
 
-  const writeResult = evmClient.writeReport(runtime, {receiver: robotAddress, report}).result();
+  const writeResult = evmClient
+    .writeReport(runtime, {
+      receiver: robotAddress,
+      report,
+      ...(gasLimit === undefined ? {} : {gasConfig: {gasLimit: gasLimit.toString()}}),
+    })
+    .result();
 
   if (writeResult.txStatus !== TxStatus.SUCCESS) {
     runtime.log(
@@ -97,7 +115,7 @@ export function submitReport<TConfig>(
     );
     return null;
   }
-  if (!writeResult.txHash) {
+  if (!writeResult.txHash || writeResult.txHash.length === 0) {
     runtime.log(`[${label}] writeReport returned SUCCESS but no txHash — skipping`);
     return null;
   }
