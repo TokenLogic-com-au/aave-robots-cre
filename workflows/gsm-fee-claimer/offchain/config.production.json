@@ -1,5 +1,5 @@
 {
-  "schedule": "0 0 * * * *",
+  "schedule": "0 0 12 1,15 * *",
   "evms": [
     {
       "chainName": "ethereum-mainnet",
