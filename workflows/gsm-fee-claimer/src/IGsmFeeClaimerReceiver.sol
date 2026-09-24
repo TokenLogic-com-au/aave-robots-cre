@@ -13,26 +13,31 @@ interface IGsmFees {
 }
 
 /// @title IGsmFeeClaimerReceiver
-/// @notice Robot that pushes accrued GSM fees to the GHO treasury. Native CRE
-/// re-implementation of the `bot-gsm-fee-claimer` workflow and its `GsmFeeDistributor`.
+/// @notice Robot that pushes accrued GSM fees to the GHO treasury.
 /// @dev `checkData` is `abi.encode(address[] gsms)`. `checkUpkeep` returns the subset
 /// with accrued fees, `abi.encode(address[])`, which the workflow signs and passes as
 /// `report`.
 interface IGsmFeeClaimerReceiver is IAaveCREReceiver {
   /// @notice Emitted when a GSM's accrued fees are sent to the treasury.
   /// @param gsm The GSM whose fees were distributed.
-  /// @param amount The fees the GSM reported right before distributing.
+  /// @param amount The fees the GSM reported right before distributing. A `Gsm4626`
+  /// also forwards its vault excess, so the treasury may receive more.
   event FeesDistributed(address indexed gsm, uint256 amount);
 
   /// @notice Emitted when a GSM's distribution reverted. The rest of the batch still runs.
   /// @param gsm The GSM whose distribution failed.
-  event FeeDistributionFailed(address indexed gsm);
+  /// @param reason The raw revert data returned by the GSM.
+  event FeeDistributionFailed(address indexed gsm, bytes reason);
 
   /// @notice Emitted when the robot is excluded from / included in automation.
   /// @param disabled Whether the robot is now excluded from automation.
   event AutomationDisabled(bool disabled);
 
-  /// @notice Thrown when `onReport` runs but no GSM in the report had fees to distribute.
+  /// @notice Thrown when `onReport` runs while the robot is excluded from automation.
+  error Disabled();
+
+  /// @notice Thrown when `onReport` distributed nothing: no GSM in the report had fees,
+  /// or every distribution reverted.
   error NothingToDistribute();
 
   /// @notice Thrown when `setDisabled` is passed the current state.

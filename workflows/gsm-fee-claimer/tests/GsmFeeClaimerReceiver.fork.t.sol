@@ -51,6 +51,9 @@ contract GsmFeeClaimerReceiverForkTest is Test {
     }
     address[] memory withFees = abi.decode(performData, (address[]));
     address treasury = IGsmTreasury(withFees[0]).getGhoTreasury();
+    for (uint256 i = 1; i < withFees.length; i++) {
+      assertEq(IGsmTreasury(withFees[i]).getGhoTreasury(), treasury, 'gsms differ in treasury');
+    }
     IERC20 gho = IERC20(GhoEthereum.GHO_TOKEN);
 
     uint256 fees;
@@ -64,13 +67,17 @@ contract GsmFeeClaimerReceiverForkTest is Test {
     uint256 treasuryBefore = gho.balanceOf(treasury);
 
     vm.recordLogs();
+    for (uint256 i = 0; i < withFees.length; i++) {
+      vm.expectEmit(address(robot));
+      emit IGsmFeeClaimerReceiver.FeesDistributed(withFees[i], feesOf[i]);
+    }
     vm.prank(anyone);
     robot.onReport('', performData);
 
     uint256 distributed;
     Vm.Log[] memory logs = vm.getRecordedLogs();
     for (uint256 i = 0; i < logs.length; i++) {
-      if (logs[i].topics[0] != FEES_DISTRIBUTED_TO_TREASURY) continue;
+      if (logs[i].topics.length == 0 || logs[i].topics[0] != FEES_DISTRIBUTED_TO_TREASURY) continue;
       distributed += abi.decode(logs[i].data, (uint256));
     }
     uint256 received = gho.balanceOf(treasury) - treasuryBefore;
