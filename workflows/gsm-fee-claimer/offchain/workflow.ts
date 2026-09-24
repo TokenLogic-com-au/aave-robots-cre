@@ -1,13 +1,6 @@
-import {bytesToHex, cre, getNetwork, handler, type Runtime} from '@chainlink/cre-sdk';
-import {
-  decodeEventLog,
-  encodeAbiParameters,
-  parseAbiParameters,
-  type Address,
-  type Hex,
-} from 'viem';
+import {cre, getNetwork, handler, type Runtime} from '@chainlink/cre-sdk';
+import {encodeAbiParameters, parseAbiParameters, type Address, type Hex} from 'viem';
 
-import {IGsmFeeClaimerReceiverABI} from '../../shared/offchain/abi/IGsmFeeClaimerReceiver';
 import {
   estimateOnReport,
   MAX_WRITE_GAS,
@@ -19,69 +12,24 @@ import {type Config, type NetworkConfig, configSchema} from './types';
 
 export {configSchema};
 
-// The receiver holds no target list: the GSMs to probe travel in checkData.
-export function encodeGsms(gsms: Address[]): Hex {
-  return encodeAbiParameters(parseAbiParameters('address[]'), [gsms]);
+type ActiveNetwork = NetworkConfig & {receiver: Address};
+
+// The receiver holds no target list: the GSMs to probe and the threshold travel in checkData.
+export function encodeCheckData(gsms: readonly Address[], minFees: bigint): Hex {
+  return encodeAbiParameters(parseAbiParameters('address[], uint256'), [gsms, minFees]);
 }
 
-// A GSM that reverts does not revert the batch (the receiver catches it), so the tx
-// receipt is the only place the outcome per GSM is visible.
-function logDistributions(
-  runtime: Runtime<Config>,
-  evmClient: EvmClient,
-  receiver: Address,
-  txHash: string,
-  label: string,
-): number | null {
-  let receipt;
-  try {
-    receipt = evmClient.getTransactionReceipt(runtime, {hash: txHash}).result().receipt;
-  } catch (e) {
-    runtime.log(`[${label}] receipt lookup failed for ${txHash}: ${e}`);
-    return null;
-  }
-  if (!receipt) {
-    runtime.log(`[${label}] no receipt for ${txHash}`);
-    return null;
-  }
-  let distributed = 0;
-  for (const log of receipt.logs) {
-    if (bytesToHex(log.address).toLowerCase() !== receiver.toLowerCase()) continue;
-    let event;
-    try {
-      event = decodeEventLog({
-        abi: IGsmFeeClaimerReceiverABI,
-        topics: log.topics.map((t) => bytesToHex(t)) as [Hex, ...Hex[]],
-        data: bytesToHex(log.data),
-      });
-    } catch {
-      continue;
-    }
-    if (event.eventName === 'FeesDistributed') {
-      distributed++;
-      runtime.log(`[${label}] FeesDistributed gsm=${event.args.gsm} amount=${event.args.amount}`);
-    } else if (event.eventName === 'FeeDistributionFailed') {
-      runtime.log(
-        `[${label}] FeeDistributionFailed gsm=${event.args.gsm} reason=${event.args.reason}`,
-      );
-    }
-  }
-  return distributed;
-}
-
-// The estimate only gates the write: a failing GSM is caught on-chain, which makes the
-// estimate unreliable as a limit, so the write requests the full CRE quota instead.
 export function runForNetwork(
   runtime: Runtime<Config>,
   evmClient: EvmClient,
-  receiver: Address,
-  gsms: Address[],
+  network: ActiveNetwork,
   label: string,
 ): string {
-  const performData = shouldSubmit(runtime, evmClient, receiver, encodeGsms(gsms), label);
+  const checkData = encodeCheckData(network.gsms, network.minFees);
+  const performData = shouldSubmit(runtime, evmClient, network.receiver, checkData, label);
   if (!performData) return 'No fees to distribute';
 
-  const estimate = estimateOnReport(runtime, evmClient, receiver, performData, label);
+  const estimate = estimateOnReport(runtime, evmClient, network.receiver, performData, label);
   if (estimate === null) return 'submit skipped';
   if (estimate > MAX_WRITE_GAS) {
     runtime.log(
@@ -89,16 +37,18 @@ export function runForNetwork(
     );
     return 'submit skipped';
   }
-  const txHash = writeSignedReport(runtime, evmClient, receiver, performData, label, MAX_WRITE_GAS);
-  if (!txHash) return 'submit skipped';
-
-  const distributed = logDistributions(runtime, evmClient, receiver, txHash, label);
-  return distributed === null
-    ? `submitted, receipt unavailable, tx=${txHash}`
-    : `distributed ${distributed}/${gsms.length}, tx=${txHash}`;
+  const txHash = writeSignedReport(
+    runtime,
+    evmClient,
+    network.receiver,
+    performData,
+    label,
+    MAX_WRITE_GAS,
+  );
+  return txHash ? `fees distributed, tx=${txHash}` : 'submit skipped';
 }
 
-export const createReceiverHandler = (network: NetworkConfig & {receiver: Address}) => {
+export const createReceiverHandler = (network: ActiveNetwork) => {
   return (runtime: Runtime<Config>): string => {
     const label = `${network.chainName}:${network.receiver}`;
     const creNetwork = getNetwork({
@@ -113,7 +63,7 @@ export const createReceiverHandler = (network: NetworkConfig & {receiver: Addres
     const evmClient = new cre.capabilities.EVMClient(creNetwork.chainSelector.selector);
 
     try {
-      return runForNetwork(runtime, evmClient, network.receiver, network.gsms, label);
+      return runForNetwork(runtime, evmClient, network, label);
     } catch (e) {
       runtime.log(`[${label}] failed: ${e}`);
       return 'Processing failed';
@@ -124,6 +74,6 @@ export const createReceiverHandler = (network: NetworkConfig & {receiver: Addres
 export const initWorkflow = (config: Config) => {
   const cron = new cre.capabilities.CronCapability();
   return config.evms
-    .filter((net): net is NetworkConfig & {receiver: Address} => net.receiver !== '')
+    .filter((net): net is ActiveNetwork => net.receiver !== '')
     .map((net) => handler(cron.trigger({schedule: config.schedule}), createReceiverHandler(net)));
 };

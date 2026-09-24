@@ -8,7 +8,7 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 import {GhoEthereum} from 'aave-address-book/GhoEthereum.sol';
 
 import {GsmFeeClaimerReceiver} from '../src/GsmFeeClaimerReceiver.sol';
-import {IGsmFeeClaimerReceiver, IGsmFees} from '../src/IGsmFeeClaimerReceiver.sol';
+import {IGsmFees} from '../src/IGsmFeeClaimerReceiver.sol';
 
 interface IGsmTreasury {
   function getGhoTreasury() external view returns (address);
@@ -17,6 +17,7 @@ interface IGsmTreasury {
 contract GsmFeeClaimerReceiverForkTest is Test {
   bytes32 internal constant FEES_DISTRIBUTED_TO_TREASURY =
     keccak256('FeesDistributedToTreasury(address,address,uint256)');
+  uint256 internal constant MIN_FEES = 1000e18;
 
   GsmFeeClaimerReceiver internal robot;
   address internal owner = makeAddr('owner');
@@ -37,7 +38,7 @@ contract GsmFeeClaimerReceiverForkTest is Test {
   function test_fork_readPath_matchesRealGsms() public view {
     IGsmFees(GhoEthereum.GSM_USDC).getAccruedFees();
     IGsmFees(GhoEthereum.GSM_USDT).getAccruedFees();
-    robot.checkUpkeep(abi.encode(gsms));
+    robot.checkUpkeep(abi.encode(gsms, MIN_FEES));
   }
 
   // End-to-end against the real GSMs: whatever checkUpkeep selects, an
@@ -45,7 +46,7 @@ contract GsmFeeClaimerReceiverForkTest is Test {
   // Gsm4626 folds vault excess into the distribution, so the treasury is checked
   // against what the GSMs report in FeesDistributedToTreasury, not the fee sum.
   function test_fork_onReport_distributesRealFeesToTreasury() public {
-    (bool needed, bytes memory performData) = robot.checkUpkeep(abi.encode(gsms));
+    (bool needed, bytes memory performData) = robot.checkUpkeep(abi.encode(gsms, MIN_FEES));
     if (!needed) {
       vm.skip(true);
     }
@@ -61,16 +62,13 @@ contract GsmFeeClaimerReceiverForkTest is Test {
     uint256[] memory gsmBalances = new uint256[](withFees.length);
     for (uint256 i = 0; i < withFees.length; i++) {
       feesOf[i] = IGsmFees(withFees[i]).getAccruedFees();
+      assertGe(feesOf[i], MIN_FEES, 'selected gsm below threshold');
       fees += feesOf[i];
       gsmBalances[i] = gho.balanceOf(withFees[i]);
     }
     uint256 treasuryBefore = gho.balanceOf(treasury);
 
     vm.recordLogs();
-    for (uint256 i = 0; i < withFees.length; i++) {
-      vm.expectEmit(address(robot));
-      emit IGsmFeeClaimerReceiver.FeesDistributed(withFees[i], feesOf[i]);
-    }
     vm.prank(anyone);
     robot.onReport('', performData);
 
@@ -92,8 +90,12 @@ contract GsmFeeClaimerReceiverForkTest is Test {
       );
     }
 
+    // Replaying the report is a no-op: nothing left to distribute, nothing moves.
+    uint256 treasuryAfter = gho.balanceOf(treasury);
     vm.prank(anyone);
-    vm.expectRevert(IGsmFeeClaimerReceiver.NothingToDistribute.selector);
     robot.onReport('', performData);
+    assertEq(gho.balanceOf(treasury), treasuryAfter, 'replay moved funds');
+    (needed, ) = robot.checkUpkeep(abi.encode(gsms, MIN_FEES));
+    assertFalse(needed, 'upkeep still needed after distributing');
   }
 }
