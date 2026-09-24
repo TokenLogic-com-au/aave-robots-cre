@@ -1,4 +1,5 @@
 {
+  "$comment": "GSM addresses: https://github.com/bgd-labs/aave-address-book/blob/main/src/GhoEthereum.sol, GhoArbitrum.sol, GhoPlasma.sol, GhoMonad.sol. minFees is in GHO wei (1000 GHO).",
   "schedule": "0 0 12 1,15 * *",
   "evms": [
     {
@@ -8,13 +9,29 @@
       "gsms": [
         "0x3A3868898305f04beC7FEa77BecFf04C13444112",
         "0x882285E62656b9623AF136Ce3078c6BdCc33F5E3"
-      ]
+      ],
+      "minFees": "1000000000000000000000"
+    },
+    {
+      "chainName": "ethereum-mainnet-arbitrum-1",
+      "isTestnet": false,
+      "receiver": "",
+      "gsms": ["0x53E0cE250d06043414070100458546AaF4e284eD"],
+      "minFees": "1000000000000000000000"
     },
     {
       "chainName": "plasma-mainnet",
       "isTestnet": false,
       "receiver": "",
-      "gsms": ["0xd06114F714beCD6f373e5cE94E07278eF46eBF37"]
+      "gsms": ["0xd06114F714beCD6f373e5cE94E07278eF46eBF37"],
+      "minFees": "1000000000000000000000"
+    },
+    {
+      "chainName": "monad-mainnet",
+      "isTestnet": false,
+      "receiver": "",
+      "gsms": ["0x3Cf3779EEf770931543ACd2C7f6ECd1b37E35caB"],
+      "minFees": "1000000000000000000000"
     }
   ]
 }

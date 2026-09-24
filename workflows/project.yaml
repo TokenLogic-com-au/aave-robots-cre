@@ -18,5 +18,9 @@ gsm-fee-claimer-production-settings:
   rpcs:
     - chain-name: ethereum-mainnet
       url: ${RPC_MAINNET}
+    - chain-name: ethereum-mainnet-arbitrum-1
+      url: ${RPC_ARBITRUM}
     - chain-name: plasma-mainnet
       url: ${RPC_PLASMA}
+    - chain-name: monad-mainnet
+      url: ${RPC_MONAD}

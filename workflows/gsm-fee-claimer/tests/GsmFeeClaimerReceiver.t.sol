@@ -13,6 +13,8 @@ import {GsmFeeClaimerReceiver} from '../src/GsmFeeClaimerReceiver.sol';
 import {IGsmFeeClaimerReceiver, IGsmFees} from '../src/IGsmFeeClaimerReceiver.sol';
 
 contract GsmFeeClaimerReceiverTest is Test {
+  uint256 internal constant MIN_FEES = 1000e18;
+
   GsmFeeClaimerReceiver internal robot;
 
   address internal owner;
@@ -59,7 +61,7 @@ contract GsmFeeClaimerReceiverTest is Test {
   function test_checkUpkeep_returnsFalse_whenNoFees() public {
     _mockFees(gsmA, 0);
     _mockFees(gsmB, 0);
-    (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(gsmA, gsmB));
+    (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(gsmA, gsmB, 0));
     assertFalse(needed, 'upkeep needed with no fees');
     assertEq(performData, '', 'performData should be empty');
   }
@@ -67,192 +69,127 @@ contract GsmFeeClaimerReceiverTest is Test {
   function test_checkUpkeep_returnsOnlyGsmsWithFees() public {
     _mockFees(gsmA, 0);
     _mockFees(gsmB, 5e18);
-    (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(gsmA, gsmB));
+    (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(gsmA, gsmB, 0));
     assertTrue(needed, 'upkeep not needed with fees');
-    address[] memory gsms = abi.decode(performData, (address[]));
-    assertEq(gsms.length, 1, 'wrong number of gsms');
-    assertEq(gsms[0], gsmB, 'wrong gsm');
+    _assertReport(performData, gsmB);
   }
 
   function test_checkUpkeep_keepsOrder_whenAllHaveFees() public {
     _mockFees(gsmA, 1);
     _mockFees(gsmB, 2);
-    (, bytes memory performData) = robot.checkUpkeep(_checkData(gsmA, gsmB));
+    (, bytes memory performData) = robot.checkUpkeep(_checkData(gsmA, gsmB, 0));
     address[] memory gsms = abi.decode(performData, (address[]));
     assertEq(gsms.length, 2, 'wrong number of gsms');
     assertEq(gsms[0], gsmA, 'wrong first gsm');
     assertEq(gsms[1], gsmB, 'wrong second gsm');
   }
 
+  function test_checkUpkeep_skipsGsm_belowMinFees() public {
+    _mockFees(gsmA, MIN_FEES - 1);
+    _mockFees(gsmB, MIN_FEES);
+    (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(gsmA, gsmB, MIN_FEES));
+    assertTrue(needed, 'upkeep not needed at the threshold');
+    _assertReport(performData, gsmB);
+  }
+
+  function test_checkUpkeep_returnsFalse_whenAllBelowMinFees() public {
+    _mockFees(gsmA, MIN_FEES - 1);
+    _mockFees(gsmB, 1);
+    (bool needed, ) = robot.checkUpkeep(_checkData(gsmA, gsmB, MIN_FEES));
+    assertFalse(needed, 'upkeep needed below the threshold');
+  }
+
   function test_checkUpkeep_skipsGsm_whenReadReverts() public {
     vm.mockCallRevert(gsmA, abi.encodeWithSelector(IGsmFees.getAccruedFees.selector), 'boom');
     _mockFees(gsmB, 5e18);
-    (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(gsmA, gsmB));
+    (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(gsmA, gsmB, 0));
     assertTrue(needed, 'upkeep not needed while one gsm has fees');
-    address[] memory gsms = abi.decode(performData, (address[]));
-    assertEq(gsms.length, 1, 'reverting gsm not skipped');
-    assertEq(gsms[0], gsmB, 'wrong gsm');
+    _assertReport(performData, gsmB);
   }
 
   function test_checkUpkeep_skipsGsm_whenNoCode() public {
     address noCode = address(0xdead);
     assertEq(noCode.code.length, 0, 'fixture should have no code');
     _mockFees(gsmB, 5e18);
-    (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(noCode, gsmB));
+    (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(noCode, gsmB, 0));
     assertTrue(needed, 'upkeep not needed while one gsm has fees');
-    address[] memory gsms = abi.decode(performData, (address[]));
-    assertEq(gsms.length, 1, 'code-less address not skipped');
-    assertEq(gsms[0], gsmB, 'wrong gsm');
+    _assertReport(performData, gsmB);
   }
 
   function test_checkUpkeep_skipsGsm_whenReadReturnsNoData() public {
-    // makeAddr accounts carry an EIP-7702 delegation in this forge version: the call
-    // succeeds with empty return data, which `try` alone would not survive.
-    assertGt(bob.code.length, 0, 'fixture should have delegation code');
+    // Code that stops immediately: the call succeeds with empty return data, which a
+    // plain `try` would not survive.
+    address noData = address(0xbeef);
+    vm.etch(noData, hex'00');
     _mockFees(gsmB, 5e18);
-    (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(bob, gsmB));
+    (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(noData, gsmB, 0));
     assertTrue(needed, 'upkeep not needed while one gsm has fees');
-    address[] memory gsms = abi.decode(performData, (address[]));
-    assertEq(gsms.length, 1, 'no-data address not skipped');
-    assertEq(gsms[0], gsmB, 'wrong gsm');
+    _assertReport(performData, gsmB);
   }
 
   function test_checkUpkeep_returnsFalse_whenDisabled() public {
     _mockFees(gsmA, 5e18);
     vm.prank(owner);
     robot.setDisabled(true);
-    (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(gsmA, gsmB));
+    (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(gsmA, gsmB, 0));
     assertFalse(needed, 'upkeep needed while disabled');
     assertEq(performData, '', 'performData should be empty');
   }
 
-  function testFuzz_checkUpkeep_neededIffAnyFees(uint256 feesA, uint256 feesB) public {
+  function testFuzz_checkUpkeep_neededIffAnyFeesAtLeastMin(
+    uint256 feesA,
+    uint256 feesB,
+    uint256 minFees
+  ) public {
     _mockFees(gsmA, feesA);
     _mockFees(gsmB, feesB);
-    (bool needed, ) = robot.checkUpkeep(_checkData(gsmA, gsmB));
-    assertEq(needed, feesA > 0 || feesB > 0, 'upkeep decision mismatch');
+    (bool needed, ) = robot.checkUpkeep(_checkData(gsmA, gsmB, minFees));
+    bool expected = (feesA > 0 && feesA >= minFees) || (feesB > 0 && feesB >= minFees);
+    assertEq(needed, expected, 'upkeep decision mismatch');
   }
 
-  function test_onReport_distributes_whenAnyoneCalls() public {
-    _mockFees(gsmA, 5e18);
-    _mockFees(gsmB, 7e18);
+  function test_onReport_distributesEachGsm_whenAnyoneCalls() public {
     _mockDistribute(gsmA);
     _mockDistribute(gsmB);
-
-    vm.expectCall(gsmA, abi.encodeWithSelector(IGsmFees.distributeFeesToTreasury.selector));
-    vm.expectCall(gsmB, abi.encodeWithSelector(IGsmFees.distributeFeesToTreasury.selector));
-    vm.expectEmit(address(robot));
-    emit IGsmFeeClaimerReceiver.FeesDistributed(gsmA, 5e18);
-    vm.expectEmit(address(robot));
-    emit IGsmFeeClaimerReceiver.FeesDistributed(gsmB, 7e18);
-
-    vm.prank(anyone);
-    robot.onReport('', _checkData(gsmA, gsmB));
-  }
-
-  function test_onReport_ignoresMetadataContents() public {
-    _mockFees(gsmA, 5e18);
-    _mockFees(gsmB, 7e18);
-    _mockDistribute(gsmA);
-    _mockDistribute(gsmB);
-
-    vm.prank(anyone);
-    robot.onReport(
-      abi.encodePacked(keccak256('workflow'), bytes10('name')),
-      _checkData(gsmA, gsmB)
-    );
-  }
-
-  function test_onReport_distributesOnce_whenGsmRepeated() public {
-    _mockFees(gsmA, 5e18);
-    // The mock keeps reporting fees after the first distribution, so the second entry
-    // is only skipped if the robot re-reads fees per entry; make the re-read return 0.
-    vm.mockCall(gsmA, abi.encodeWithSelector(IGsmFees.distributeFeesToTreasury.selector), '');
-    vm.mockCalls(
-      gsmA,
-      abi.encodeWithSelector(IGsmFees.getAccruedFees.selector),
-      _feesSequence(5e18, 0)
-    );
     vm.expectCall(gsmA, abi.encodeWithSelector(IGsmFees.distributeFeesToTreasury.selector), 1);
-
-    vm.prank(anyone);
-    robot.onReport('', _checkData(gsmA, gsmA));
-  }
-
-  function test_onReport_skipsGsm_withoutFees() public {
-    _mockFees(gsmA, 0);
-    _mockFees(gsmB, 7e18);
-    _mockDistribute(gsmB);
-
-    vm.expectCall(gsmA, abi.encodeWithSelector(IGsmFees.distributeFeesToTreasury.selector), 0);
     vm.expectCall(gsmB, abi.encodeWithSelector(IGsmFees.distributeFeesToTreasury.selector), 1);
 
     vm.prank(anyone);
-    robot.onReport('', _checkData(gsmA, gsmB));
+    robot.onReport('', _report(gsmA, gsmB));
   }
 
-  function test_onReport_emitsFailure_andContinues_whenDistributeReverts() public {
-    _mockFees(gsmA, 5e18);
-    _mockFees(gsmB, 7e18);
-    vm.mockCallRevert(
-      gsmA,
-      abi.encodeWithSelector(IGsmFees.distributeFeesToTreasury.selector),
-      'boom'
-    );
+  function test_onReport_ignoresMetadataContents() public {
+    _mockDistribute(gsmA);
     _mockDistribute(gsmB);
-
-    vm.expectEmit(address(robot));
-    emit IGsmFeeClaimerReceiver.FeeDistributionFailed(gsmA, 'boom');
-    vm.expectEmit(address(robot));
-    emit IGsmFeeClaimerReceiver.FeesDistributed(gsmB, 7e18);
-
     vm.prank(anyone);
-    robot.onReport('', _checkData(gsmA, gsmB));
+    robot.onReport(abi.encodePacked(keccak256('workflow'), bytes10('name')), _report(gsmA, gsmB));
   }
 
-  function test_onReport_revertsWith_NothingToDistribute_whenNoFees() public {
-    _mockFees(gsmA, 0);
-    _mockFees(gsmB, 0);
-
+  function test_onReport_isNoOp_whenReportEmpty() public {
     vm.prank(anyone);
-    vm.expectRevert(IGsmFeeClaimerReceiver.NothingToDistribute.selector);
-    robot.onReport('', _checkData(gsmA, gsmB));
+    robot.onReport('', abi.encode(new address[](0)));
   }
 
-  function test_onReport_revertsWith_NothingToDistribute_whenAllDistributionsFail() public {
-    _mockFees(gsmA, 5e18);
-    _mockFees(gsmB, 7e18);
-    vm.mockCallRevert(
-      gsmA,
-      abi.encodeWithSelector(IGsmFees.distributeFeesToTreasury.selector),
-      'boom'
-    );
+  function test_onReport_bubblesGsmRevert() public {
+    _mockDistribute(gsmA);
     vm.mockCallRevert(
       gsmB,
       abi.encodeWithSelector(IGsmFees.distributeFeesToTreasury.selector),
       'boom'
     );
-
     vm.prank(anyone);
-    vm.expectRevert(IGsmFeeClaimerReceiver.NothingToDistribute.selector);
-    robot.onReport('', _checkData(gsmA, gsmB));
-  }
-
-  function test_onReport_revertsWith_NothingToDistribute_whenReportEmpty() public {
-    vm.prank(anyone);
-    vm.expectRevert(IGsmFeeClaimerReceiver.NothingToDistribute.selector);
-    robot.onReport('', abi.encode(new address[](0)));
+    vm.expectRevert(bytes('boom'));
+    robot.onReport('', _report(gsmA, gsmB));
   }
 
   function test_onReport_revertsWith_Disabled() public {
-    _mockFees(gsmA, 5e18);
     _mockDistribute(gsmA);
     vm.prank(guardian);
     robot.setDisabled(true);
 
     vm.prank(anyone);
     vm.expectRevert(IGsmFeeClaimerReceiver.Disabled.selector);
-    robot.onReport('', _checkData(gsmA, gsmB));
+    robot.onReport('', _report(gsmA, gsmB));
   }
 
   function test_setDisabled_byOwner() public {
@@ -279,10 +216,10 @@ contract GsmFeeClaimerReceiverTest is Test {
     vm.stopPrank();
     assertFalse(robot.isDisabled(), 'still disabled');
 
-    (bool needed, ) = robot.checkUpkeep(_checkData(gsmA, gsmB));
+    (bool needed, ) = robot.checkUpkeep(_checkData(gsmA, gsmB, 0));
     assertTrue(needed, 'upkeep not resumed');
     vm.prank(anyone);
-    robot.onReport('', _checkData(gsmA, gsmB));
+    robot.onReport('', _report(gsmA, gsmA));
   }
 
   function test_setDisabled_revertsWith_NotOwnerOrGuardian() public {
@@ -306,11 +243,24 @@ contract GsmFeeClaimerReceiverTest is Test {
     robot.setDisabled(true);
   }
 
-  function _checkData(address a, address b) internal pure returns (bytes memory) {
-    address[] memory gsms = new address[](2);
+  function _checkData(address a, address b, uint256 minFees) internal pure returns (bytes memory) {
+    return abi.encode(_pair(a, b), minFees);
+  }
+
+  function _report(address a, address b) internal pure returns (bytes memory) {
+    return abi.encode(_pair(a, b));
+  }
+
+  function _pair(address a, address b) internal pure returns (address[] memory gsms) {
+    gsms = new address[](2);
     gsms[0] = a;
     gsms[1] = b;
-    return abi.encode(gsms);
+  }
+
+  function _assertReport(bytes memory performData, address expected) internal pure {
+    address[] memory gsms = abi.decode(performData, (address[]));
+    assertEq(gsms.length, 1, 'wrong number of gsms');
+    assertEq(gsms[0], expected, 'wrong gsm');
   }
 
   function _mockFees(address gsm, uint256 fees) internal {
@@ -319,12 +269,5 @@ contract GsmFeeClaimerReceiverTest is Test {
 
   function _mockDistribute(address gsm) internal {
     vm.mockCall(gsm, abi.encodeWithSelector(IGsmFees.distributeFeesToTreasury.selector), '');
-  }
-
-  function _feesSequence(uint256 first, uint256 second) internal pure returns (bytes[] memory) {
-    bytes[] memory results = new bytes[](2);
-    results[0] = abi.encode(first);
-    results[1] = abi.encode(second);
-    return results;
   }
 }

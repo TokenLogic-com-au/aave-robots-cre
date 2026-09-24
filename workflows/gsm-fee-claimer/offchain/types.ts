@@ -7,6 +7,7 @@ const address = z
   .string()
   .refine((a) => isAddress(a, {strict: false}), 'invalid address')
   .transform((a): Address => getAddress(a.toLowerCase()));
+const uint = z.string().regex(/^\d+$/).transform(BigInt);
 
 export const networkSchema = z.object({
   chainName: z.string(),
@@ -14,6 +15,8 @@ export const networkSchema = z.object({
   // Empty until the receiver is deployed; the network registers no trigger meanwhile.
   receiver: address.or(z.literal('')),
   gsms: z.array(address).nonempty(),
+  // GHO wei; a GSM below this is left to accrue.
+  minFees: uint,
 });
 export type NetworkConfig = z.infer<typeof networkSchema>;
 
