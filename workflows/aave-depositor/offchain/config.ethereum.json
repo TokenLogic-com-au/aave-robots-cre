@@ -1,9 +1,10 @@
 {
+  "$comment": "Addresses from https://github.com/bgd-labs/aave-address-book/blob/main/src/AaveV3Ethereum.sol; ignoredTokens = GHO and AAVE. USD amounts have 8 decimals.",
   "schedule": "0 0 12 */14 * *",
   "chainName": "ethereum-mainnet",
   "isTestnet": false,
   "receiver": "",
-  "dataProviderV3": "0x497a1994c46d4f6C864904A9f1fac6328Cb7C8a6",
+  "dataProviderV3": "0x0a16f2FCC0D44FaE41cc54e079281D84A363bECD",
   "collector": "0x464C71f6c2F760DdA6093dCB91C24c39e5d6e18c",
   "priceOracle": "0x54586bE62E3c3580375aE3723C145253060Ca0C2",
   "corePoolV3": "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
@@ -14,11 +15,8 @@
   "migrationMinUsd": "500000000000",
   "migrationBps": "9000",
   "ignoredTokens": [
-    "0x40d16fc0246ad3160ccc09b8d0d3a2cd28ae6c2f",
-    "0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9",
-    "0x63706e401c06ac8513145b7687A14804d17f814b",
-    "0xba5DdD1f9d7F570dc94a51479a000E3BCE967196",
-    "0x76FB31fb4af56892A25e32cFC43De717950c9278"
+    "0x40D16FC0246aD3160Ccc09B8D0D3A2cD28aE6C2f",
+    "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9"
   ],
   "primeTokens": [
     "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",

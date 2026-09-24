@@ -20,10 +20,9 @@ import {
   initWorkflow,
   MAX_CALLS_PER_REPORT,
   MAX_REPORTS_PER_RUN,
-  MAX_WRITE_GAS,
   onCronTrigger,
-  withHeadroom,
 } from './workflow';
+import {MAX_WRITE_GAS} from '../../shared/offchain/checkUpkeep';
 import {
   ADDR,
   GAS_ESTIMATE,
@@ -106,11 +105,7 @@ describe('config', () => {
   });
 });
 
-describe('gas and batching', () => {
-  test('withHeadroom adds 25%', () => {
-    expect(withHeadroom(1_000_000n)).toBe(1_250_000n);
-  });
-
+describe('batching', () => {
   test('chunkCalls splits into batches of MAX_CALLS_PER_REPORT', () => {
     const calls = Array.from(
       {length: MAX_CALLS_PER_REPORT * 2 + 1},
@@ -122,6 +117,20 @@ describe('gas and batching', () => {
     expect(chunks[2].length).toBe(1);
     expect(chunks.flat()).toEqual(calls);
   });
+});
+
+describe('production configs', () => {
+  for (const chain of ['ethereum', 'arbitrum', 'base', 'optimism']) {
+    test(`config.${chain}.json parses and its chain name resolves`, async () => {
+      const raw = await Bun.file(`${import.meta.dir}/config.${chain}.json`).json();
+      const config = configSchema.parse(raw);
+      expect(
+        getNetwork({chainFamily: 'evm', chainSelectorName: config.chainName, isTestnet: false}),
+      ).toBeDefined();
+      expect(config.receiver).toBe('');
+      expect(config.ignoredTokens.length).toBeGreaterThan(0);
+    });
+  }
 });
 
 describe('initWorkflow', () => {
@@ -235,7 +244,7 @@ describe('onCronTrigger deposits', () => {
     expect(onCronTrigger(makeRuntime(BASE_CONFIG))).toBe('submit skipped');
   });
 
-  test('estimates onReport from the forwarder with the pinned workflow id and writes with 25% headroom', () => {
+  test('estimates onReport from the forwarder with the pinned workflow id and writes with the full quota', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     const {receiver} = setupBaseEvmMocks(evmMock);
     receiver.expectedWorkflowId = () => WORKFLOW_ID;
@@ -258,7 +267,7 @@ describe('onCronTrigger deposits', () => {
     expect(onCronTrigger(makeRuntime(BASE_CONFIG))).toBe(SUBMITTED);
     expect(estimateFrom?.toLowerCase()).toBe(ADDR.forwarder.toLowerCase());
     expect(metadata).toBe(WORKFLOW_ID);
-    expect(gasLimit).toBe(withHeadroom(GAS_ESTIMATE));
+    expect(gasLimit).toBe(MAX_WRITE_GAS);
   });
 
   test('returns "submit skipped" when the receiver cannot be read', () => {
@@ -286,7 +295,7 @@ describe('onCronTrigger deposits', () => {
   test('returns "submit skipped" when the estimate exceeds the max write gas', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     setupBaseEvmMocks(evmMock);
-    evmMock.estimateGas = () => ({gas: MAX_WRITE_GAS});
+    evmMock.estimateGas = () => ({gas: MAX_WRITE_GAS + 1n});
     const runtime = makeRuntime(BASE_CONFIG);
     expect(onCronTrigger(runtime)).toBe('submit skipped');
     expect(runtime.getLogs().join('\n')).toContain('exceeds max write gas');

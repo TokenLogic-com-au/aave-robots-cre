@@ -49,6 +49,7 @@ contract AaveDepositorReceiver is IAaveDepositorReceiver, OwnableWithGuardian {
       forwarder_ != address(0) && roles_ != address(0) && steward_ != address(0),
       ZeroAddress()
     );
+
     FORWARDER = forwarder_;
     ROLES = IRolesModifier(roles_);
     STEWARD = steward_;
@@ -60,11 +61,14 @@ contract AaveDepositorReceiver is IAaveDepositorReceiver, OwnableWithGuardian {
     bytes calldata checkData
   ) external view returns (bool upkeepNeeded, bytes memory performData) {
     if (_disabled || checkData.length == 0) return (false, '');
+
     bytes[] memory calls = abi.decode(checkData, (bytes[]));
     if (calls.length == 0) return (false, '');
+
     for (uint256 i = 0; i < calls.length; i++) {
       if (!_isAllowed(_selector(calls[i]))) return (false, '');
     }
+
     return (true, checkData);
   }
 
@@ -72,18 +76,22 @@ contract AaveDepositorReceiver is IAaveDepositorReceiver, OwnableWithGuardian {
   /// @dev All-or-nothing: a call the Roles Modifier rejects reverts the whole report.
   function onReport(bytes calldata metadata, bytes calldata report) external override {
     require(msg.sender == FORWARDER, InvalidSender(msg.sender));
+
     bytes32 expected = _expectedWorkflowId;
     if (expected != bytes32(0)) {
       bytes32 received = metadata.length >= 32 ? bytes32(metadata[:32]) : bytes32(0);
       require(received == expected, InvalidWorkflowId(received, expected));
     }
+
     if (_disabled) revert NothingToExecute();
 
     bytes[] memory calls = abi.decode(report, (bytes[]));
     if (calls.length == 0) revert NothingToExecute();
+
     for (uint256 i = 0; i < calls.length; i++) {
       bytes4 selector = _selector(calls[i]);
       require(_isAllowed(selector), SelectorNotAllowed(selector));
+
       ROLES.execTransactionWithRole(STEWARD, 0, calls[i], 0, ROLE_KEY, true);
       emit StewardCallExecuted(i, selector);
     }

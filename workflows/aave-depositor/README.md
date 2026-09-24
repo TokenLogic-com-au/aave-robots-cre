@@ -4,7 +4,7 @@ CRE robot that puts idle Aave Collector funds to work: it supplies reserve balan
 into the V3 pools and migrates residual V2 aTokens into V3, through the Aave
 `PoolExposureSteward` behind a Zodiac Roles Modifier. Native CRE re-implementation of
 the `bot-aave-depositor` workflow and its `AaveIntentExecutor`. One receiver and one
-workflow per chain; Ethereum first.
+workflow per chain: Ethereum, Arbitrum, Base and Optimism.
 
 ## Layout
 
@@ -18,7 +18,7 @@ aave-depositor/
 │   └── AaveDepositorReceiver.fork.t.sol  # fork test: AFC grants the role, a real depositV3 runs
 ├── scripts/
 │   ├── DeployAaveDepositorReceiver.s.sol # stand-alone forge deploy (Ethereum)
-│   └── AaveDepositorEthereum.sol         # forwarder / Roles / role key constants shared with the fork test
+│   └── AaveDepositorNetworks.sol         # per-chain forwarder / Roles / Steward / owner, shared with the fork test
 └── offchain/                             # CRE workflow — see offchain/README.md
 ```
 
@@ -28,7 +28,7 @@ aave-depositor/
 
 - `checkUpkeep(checkData) → (needed, calls)` — read-only pre-flight. `checkData` is
   `abi.encode(bytes[] calls)`, each call being Steward calldata. Returns `(true,
-  checkData)` when the robot is enabled and every call targets an allowed selector,
+checkData)` when the robot is enabled and every call targets an allowed selector,
   `(false, "")` otherwise.
 - `onReport(metadata, report)` — **permissioned**: `msg.sender` must be the CRE
   forwarder, and when `expectedWorkflowId` is set the report's workflow id must match.
@@ -65,8 +65,9 @@ Deploying the receiver is not enough. On Ethereum the Roles Modifier
 (`0x1D5579B363806CCecc35115ab8F56EECf6610ea9`) is owned by, and executes through, the
 Aave Finance Committee Safe (`MiscEthereum.AFC_SAFE`), which must:
 
-1. `enableModule(rolesModifier)` on the Safe itself (as of 2026-09-23 this is not done:
-   `AFC_SAFE.isModuleEnabled(roles)` is `false`, so every role reverts with `GS104`);
+1. `enableModule(rolesModifier)` on the Safe itself (as of 2026-09-24 this is done on
+   Arbitrum, Base and Optimism but **not** on Ethereum, where every role reverts with
+   `GS104`);
 2. `enableModule(receiver)` on the Roles Modifier;
 3. `assignRoles(receiver, [bytes32("aave_depositor")], [true])` on the Roles Modifier.
 
@@ -83,13 +84,18 @@ make test-offchain-aave-depositor                                               
 
 ## Deploying
 
+One receiver per network. The script takes forwarder, Roles Modifier, Steward, owner
+(level-1 governance executor) and guardian (governance guardian) from
+`AaveDepositorNetworks` for the chain it runs on:
+
 ```bash
 make deploy-aave-depositor env=Mainnet dry=1   # simulate
 make deploy-aave-depositor env=Mainnet         # broadcast + verify
+make deploy-aave-depositor env=Arbitrum
+make deploy-aave-depositor env=Base
+make deploy-aave-depositor env=Optimism
 ```
 
-Constructor: forwarder (Chainlink KeystoneForwarder for the chain), Roles Modifier,
-Steward, role key, owner (level-1 governance executor) and guardian (governance
-guardian). After deploying, paste the address into `offchain/config.ethereum.json` as
+After deploying, paste the address into that chain's `offchain/config.<chain>.json` as
 `receiver`, ask the Roles owner to grant the role, and pin the workflow id once the
 workflow is deployed.
