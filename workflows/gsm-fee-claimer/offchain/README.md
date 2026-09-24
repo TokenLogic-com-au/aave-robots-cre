@@ -8,29 +8,27 @@ which sends those fees to the GHO treasury. One trigger per network.
 
 ## Files
 
-| File                     | Purpose                                                             |
-| ------------------------ | ------------------------------------------------------------------- |
-| `main.ts`                | Entry point — builds the runner from the config in `workflow.yaml`. |
-| `workflow.ts`            | `initWorkflow` (one handler per network) + `createReceiverHandler`. |
-| `types.ts`               | Zod config schema (`schedule`, `evms[].receiver`, `evms[].gsms`).   |
-| `config.production.json` | Receiver + GSM list per network (Ethereum USDC + USDT, Plasma).     |
-| `workflow.test.ts`       | `bun test` unit suite (mocked cre-sdk EVM client).                  |
+| File                     | Purpose                                                               |
+| ------------------------ | --------------------------------------------------------------------- |
+| `main.ts`                | Entry point — builds the runner from the config in `workflow.yaml`.   |
+| `workflow.ts`            | `initWorkflow` (one handler per network) + `createReceiverHandler`.   |
+| `types.ts`               | Zod config schema (`schedule`, `evms[].receiver`, `gsms`, `minFees`). |
+| `config.production.json` | Receiver + GSM list per network (Ethereum USDC + USDT, Plasma).       |
+| `workflow.test.ts`       | `bun test` unit suite (mocked cre-sdk EVM client).                    |
 
 Each `receiver` is filled in after the corresponding `GsmFeeClaimerReceiver` is
 deployed on that network. Addresses are normalized on parse, so casing in the JSON
 does not matter (and is not checksum-verified).
 
-After a successful write the workflow reads the transaction receipt and logs one
-line per GSM (`FeesDistributed` or `FeeDistributionFailed` with the revert reason),
-since a failing GSM does not fail the transaction.
+`minFees` is in GHO wei (18 decimals on every network); a GSM below it is left to
+accrue until the next run.
 
 ## Gas
 
-Because the receiver catches a failing GSM instead of reverting, `eth_estimateGas`
-settles on the gas that lets the first distribution succeed, not all of them. The
-workflow therefore uses the estimate only to skip a write that would revert or
-exceed the CRE quota, and requests the full quota (`MAX_WRITE_GAS`, 10M) for the
-write itself; gas is only paid for what the transaction uses.
+The workflow uses `eth_estimateGas` only to skip a write that would revert or exceed
+the CRE quota, and requests the full quota (`MAX_WRITE_GAS`, 10M) for the write itself
+so the simulator and production behave the same. Gas is only paid for what the
+transaction uses.
 
 ## Setup
 

@@ -24,22 +24,19 @@ gsm-fee-claimer/
 `GsmFeeClaimerReceiver` implements [`IAaveCREReceiver`](../shared/src/IAaveCREReceiver.sol):
 
 - `checkUpkeep(checkData) → (needed, gsms)` — read-only probe. `checkData` is
-  `abi.encode(address[] gsms)`; the robot reads `getAccruedFees()` on each and
-  returns the subset with fees as `abi.encode(address[])`. A GSM whose read
-  reverts, has no code or returns no data is skipped. Returns `(false, "")` while disabled, with empty
-  `checkData`, or when no GSM has fees.
-- `onReport(metadata, report)` — decodes `report` as `address[]` and, for every GSM
-  that **still** has accrued fees, calls `distributeFeesToTreasury()`. One reverting
-  GSM emits `FeeDistributionFailed(gsm, reason)` and does not block the rest; reverts
-  `Disabled` while disabled and `NothingToDistribute` if nothing was distributed
-  (no fees, or every GSM reverted). Re-reading the fees on-chain
-  means a stale or forged report can only trigger distributions that are due.
-  `FeesDistributed.amount` is the fee balance the GSM reported right before the
-  call; a `Gsm4626` also folds its vault excess into the same distribution, so the
-  treasury can receive more than that.
+  `abi.encode(address[] gsms, uint256 minFees)`; the robot reads `getAccruedFees()` on
+  each GSM and returns those holding at least `minFees` as `abi.encode(address[])`. A
+  GSM whose read reverts, has no code or returns no data is skipped. Returns
+  `(false, "")` while disabled, with empty `checkData`, or when no GSM qualifies.
+- `onReport(metadata, report)` — decodes `report` as `address[]` and calls
+  `distributeFeesToTreasury()` on each GSM. The GSM emits the authoritative
+  `FeesDistributedToTreasury` event; a `Gsm4626` also folds its vault excess into the
+  same distribution. A reverting GSM reverts the whole report, which the workflow's
+  gas estimate catches before writing. Reverts `Disabled` while disabled.
 
-The robot holds no target list: the GSMs live in the workflow config and travel in
-`checkData`, so adding a GSM is a config change, not a redeploy.
+The robot holds no target list: the GSMs and the threshold live in the workflow config
+and travel in `checkData`, so adding a GSM or tuning the threshold is a config change,
+not a redeploy.
 
 `onReport` is intentionally **permissionless**, like `distributeFeesToTreasury`
 itself: the worst a caller can do is send fees to the treasury a little earlier.
@@ -63,11 +60,17 @@ make test-offchain-gsm-fee-claimer                                              
 
 ## Deploying
 
+One receiver per network. The script picks owner and guardian from the address book
+for the chain it runs on (level-1 governance executor and governance guardian):
+
 ```bash
-make deploy-gsm-fee-claimer env=Mainnet dry=1   # simulate
-make deploy-gsm-fee-claimer env=Mainnet         # broadcast + verify
+make deploy-gsm-fee-claimer env=Mainnet dry=1    # simulate
+make deploy-gsm-fee-claimer env=Mainnet          # broadcast + verify
+make deploy-gsm-fee-claimer env=Arbitrum
+make deploy-gsm-fee-claimer env=Plasma
+make deploy-gsm-fee-claimer env=Monad
 ```
 
-Owner is the level-1 governance executor and guardian the governance guardian, both
-from the address book. After deploying, paste the address into
-`offchain/config.production.json` as that network's `receiver`.
+Plasma and Monad have no explorer entry in `foundry.toml`, so verification there is
+manual. After deploying, paste the address into `offchain/config.production.json` as
+that network's `receiver`.
