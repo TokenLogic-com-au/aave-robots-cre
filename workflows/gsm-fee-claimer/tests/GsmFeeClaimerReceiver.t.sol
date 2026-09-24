@@ -37,6 +37,7 @@ contract GsmFeeClaimerReceiverTest is Test {
   function test_constructor_setsOwnerAndGuardian() public view {
     assertEq(robot.owner(), owner, 'owner not set');
     assertEq(robot.guardian(), guardian, 'guardian not set');
+    assertFalse(robot.isDisabled(), 'should start enabled');
   }
 
   function test_supportsInterface() public view {
@@ -50,15 +51,17 @@ contract GsmFeeClaimerReceiverTest is Test {
   }
 
   function test_checkUpkeep_returnsFalse_whenCheckDataEmpty() public view {
-    (bool needed, ) = robot.checkUpkeep('');
+    (bool needed, bytes memory performData) = robot.checkUpkeep('');
     assertFalse(needed, 'upkeep needed with empty checkData');
+    assertEq(performData, '', 'performData should be empty');
   }
 
   function test_checkUpkeep_returnsFalse_whenNoFees() public {
     _mockFees(gsmA, 0);
     _mockFees(gsmB, 0);
-    (bool needed, ) = robot.checkUpkeep(_checkData(gsmA, gsmB));
+    (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(gsmA, gsmB));
     assertFalse(needed, 'upkeep needed with no fees');
+    assertEq(performData, '', 'performData should be empty');
   }
 
   function test_checkUpkeep_returnsOnlyGsmsWithFees() public {
@@ -91,12 +94,36 @@ contract GsmFeeClaimerReceiverTest is Test {
     assertEq(gsms[0], gsmB, 'wrong gsm');
   }
 
+  function test_checkUpkeep_skipsGsm_whenNoCode() public {
+    address noCode = address(0xdead);
+    assertEq(noCode.code.length, 0, 'fixture should have no code');
+    _mockFees(gsmB, 5e18);
+    (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(noCode, gsmB));
+    assertTrue(needed, 'upkeep not needed while one gsm has fees');
+    address[] memory gsms = abi.decode(performData, (address[]));
+    assertEq(gsms.length, 1, 'code-less address not skipped');
+    assertEq(gsms[0], gsmB, 'wrong gsm');
+  }
+
+  function test_checkUpkeep_skipsGsm_whenReadReturnsNoData() public {
+    // makeAddr accounts carry an EIP-7702 delegation in this forge version: the call
+    // succeeds with empty return data, which `try` alone would not survive.
+    assertGt(bob.code.length, 0, 'fixture should have delegation code');
+    _mockFees(gsmB, 5e18);
+    (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(bob, gsmB));
+    assertTrue(needed, 'upkeep not needed while one gsm has fees');
+    address[] memory gsms = abi.decode(performData, (address[]));
+    assertEq(gsms.length, 1, 'no-data address not skipped');
+    assertEq(gsms[0], gsmB, 'wrong gsm');
+  }
+
   function test_checkUpkeep_returnsFalse_whenDisabled() public {
     _mockFees(gsmA, 5e18);
     vm.prank(owner);
     robot.setDisabled(true);
-    (bool needed, ) = robot.checkUpkeep(_checkData(gsmA, gsmB));
+    (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(gsmA, gsmB));
     assertFalse(needed, 'upkeep needed while disabled');
+    assertEq(performData, '', 'performData should be empty');
   }
 
   function testFuzz_checkUpkeep_neededIffAnyFees(uint256 feesA, uint256 feesB) public {
@@ -123,6 +150,35 @@ contract GsmFeeClaimerReceiverTest is Test {
     robot.onReport('', _checkData(gsmA, gsmB));
   }
 
+  function test_onReport_ignoresMetadataContents() public {
+    _mockFees(gsmA, 5e18);
+    _mockFees(gsmB, 7e18);
+    _mockDistribute(gsmA);
+    _mockDistribute(gsmB);
+
+    vm.prank(anyone);
+    robot.onReport(
+      abi.encodePacked(keccak256('workflow'), bytes10('name')),
+      _checkData(gsmA, gsmB)
+    );
+  }
+
+  function test_onReport_distributesOnce_whenGsmRepeated() public {
+    _mockFees(gsmA, 5e18);
+    // The mock keeps reporting fees after the first distribution, so the second entry
+    // is only skipped if the robot re-reads fees per entry; make the re-read return 0.
+    vm.mockCall(gsmA, abi.encodeWithSelector(IGsmFees.distributeFeesToTreasury.selector), '');
+    vm.mockCalls(
+      gsmA,
+      abi.encodeWithSelector(IGsmFees.getAccruedFees.selector),
+      _feesSequence(5e18, 0)
+    );
+    vm.expectCall(gsmA, abi.encodeWithSelector(IGsmFees.distributeFeesToTreasury.selector), 1);
+
+    vm.prank(anyone);
+    robot.onReport('', _checkData(gsmA, gsmA));
+  }
+
   function test_onReport_skipsGsm_withoutFees() public {
     _mockFees(gsmA, 0);
     _mockFees(gsmB, 7e18);
@@ -146,7 +202,7 @@ contract GsmFeeClaimerReceiverTest is Test {
     _mockDistribute(gsmB);
 
     vm.expectEmit(address(robot));
-    emit IGsmFeeClaimerReceiver.FeeDistributionFailed(gsmA);
+    emit IGsmFeeClaimerReceiver.FeeDistributionFailed(gsmA, 'boom');
     vm.expectEmit(address(robot));
     emit IGsmFeeClaimerReceiver.FeesDistributed(gsmB, 7e18);
 
@@ -165,25 +221,37 @@ contract GsmFeeClaimerReceiverTest is Test {
 
   function test_onReport_revertsWith_NothingToDistribute_whenAllDistributionsFail() public {
     _mockFees(gsmA, 5e18);
+    _mockFees(gsmB, 7e18);
     vm.mockCallRevert(
       gsmA,
+      abi.encodeWithSelector(IGsmFees.distributeFeesToTreasury.selector),
+      'boom'
+    );
+    vm.mockCallRevert(
+      gsmB,
       abi.encodeWithSelector(IGsmFees.distributeFeesToTreasury.selector),
       'boom'
     );
 
     vm.prank(anyone);
     vm.expectRevert(IGsmFeeClaimerReceiver.NothingToDistribute.selector);
-    robot.onReport('', _checkData(gsmA, gsmA));
+    robot.onReport('', _checkData(gsmA, gsmB));
   }
 
-  function test_onReport_revertsWith_NothingToDistribute_whenDisabled() public {
+  function test_onReport_revertsWith_NothingToDistribute_whenReportEmpty() public {
+    vm.prank(anyone);
+    vm.expectRevert(IGsmFeeClaimerReceiver.NothingToDistribute.selector);
+    robot.onReport('', abi.encode(new address[](0)));
+  }
+
+  function test_onReport_revertsWith_Disabled() public {
     _mockFees(gsmA, 5e18);
     _mockDistribute(gsmA);
     vm.prank(guardian);
     robot.setDisabled(true);
 
     vm.prank(anyone);
-    vm.expectRevert(IGsmFeeClaimerReceiver.NothingToDistribute.selector);
+    vm.expectRevert(IGsmFeeClaimerReceiver.Disabled.selector);
     robot.onReport('', _checkData(gsmA, gsmB));
   }
 
@@ -200,6 +268,21 @@ contract GsmFeeClaimerReceiverTest is Test {
     vm.prank(guardian);
     robot.setDisabled(true);
     assertTrue(robot.isDisabled(), 'not disabled by guardian');
+  }
+
+  function test_setDisabled_false_resumesAutomation() public {
+    _mockFees(gsmA, 5e18);
+    _mockDistribute(gsmA);
+    vm.startPrank(owner);
+    robot.setDisabled(true);
+    robot.setDisabled(false);
+    vm.stopPrank();
+    assertFalse(robot.isDisabled(), 'still disabled');
+
+    (bool needed, ) = robot.checkUpkeep(_checkData(gsmA, gsmB));
+    assertTrue(needed, 'upkeep not resumed');
+    vm.prank(anyone);
+    robot.onReport('', _checkData(gsmA, gsmB));
   }
 
   function test_setDisabled_revertsWith_NotOwnerOrGuardian() public {
@@ -236,5 +319,12 @@ contract GsmFeeClaimerReceiverTest is Test {
 
   function _mockDistribute(address gsm) internal {
     vm.mockCall(gsm, abi.encodeWithSelector(IGsmFees.distributeFeesToTreasury.selector), '');
+  }
+
+  function _feesSequence(uint256 first, uint256 second) internal pure returns (bytes[] memory) {
+    bytes[] memory results = new bytes[](2);
+    results[0] = abi.encode(first);
+    results[1] = abi.encode(second);
+    return results;
   }
 }

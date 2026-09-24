@@ -10,7 +10,7 @@ production-settings:
     - chain-name: ethereum-mainnet
       url: https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}
 
-# GSM Fee Claimer (native). Owner is the Safe 0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B.
+# GSM Fee Claimer (native). Workflow owner is the Safe 0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B.
 gsm-fee-claimer-production-settings:
   account:
     workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
@@ -19,4 +19,4 @@ gsm-fee-claimer-production-settings:
     - chain-name: ethereum-mainnet
       url: ${RPC_MAINNET}
     - chain-name: plasma-mainnet
-      url: ${RPC_URL_PLASMA}
+      url: ${RPC_PLASMA}
