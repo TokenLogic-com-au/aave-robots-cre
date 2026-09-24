@@ -1,4 +1,4 @@
-import {cre, encodeCallMsg, handler, type Runtime} from '@chainlink/cre-sdk';
+import {cre, handler, type Runtime} from '@chainlink/cre-sdk';
 import {
   decodeFunctionResult,
   encodeAbiParameters,
@@ -8,13 +8,17 @@ import {
   type Hex,
 } from 'viem';
 
-import {shouldSubmit, writeSignedReport} from '../../shared/offchain/checkUpkeep';
+import {
+  estimateOnReport,
+  MAX_WRITE_GAS,
+  shouldSubmit,
+  writeSignedReport,
+} from '../../shared/offchain/checkUpkeep';
 import {type Config, type EvmClient, type Result, configSchema} from './types';
 import {IAaveDepositorReceiver} from './abi/IAaveDepositorReceiver';
 import {fetchSupplyCaps} from './helpers/caps';
 import {parseChainConfig, toTokenSet} from './helpers/config';
 import {buildDepositCalls, depositCandidates} from './helpers/deposits';
-import {applyBps} from './helpers/math';
 import {buildMigrationCalls, migrationCandidates} from './helpers/migrations';
 import {decodeOrNull, multicall} from './helpers/multicall';
 import {fetchReserves} from './helpers/reserves';
@@ -23,13 +27,11 @@ import type {StewardContext} from './helpers/steward';
 export {configSchema};
 
 // A V2 to V3 migration costs ~750k gas through Roles + Safe + Steward (a deposit ~300k),
-// and the DON caps a write at 10M, so calls are written in batches of at most this size.
+// and a CRE write is capped at MAX_WRITE_GAS, so calls are written in batches of at most this size.
 export const MAX_CALLS_PER_REPORT = 8;
-export const MAX_WRITE_GAS = 10_000_000n;
 // CRE allows 15 chain reads per execution: 8 go to reserves and caps, 1 to the receiver,
 // and each report batch spends 2 (checkUpkeep + estimateGas). The rest waits for the next tick.
 export const MAX_REPORTS_PER_RUN = 3;
-const GAS_HEADROOM_BPS = 12_500n;
 
 type ReceiverInfo = {forwarder: Address; expectedWorkflowId: Hex};
 
@@ -43,10 +45,6 @@ export function chunkCalls(calls: Hex[]): Hex[][] {
     chunks.push(calls.slice(i, i + MAX_CALLS_PER_REPORT));
   }
   return chunks;
-}
-
-export function withHeadroom(estimate: bigint): bigint {
-  return applyBps(estimate, GAS_HEADROOM_BPS);
 }
 
 // onReport only accepts the forwarder, so the gas estimate has to impersonate it and
@@ -88,36 +86,8 @@ function readReceiver(
   return {ok: true, value: {forwarder, expectedWorkflowId}};
 }
 
-function estimateOnReport(
-  runtime: Runtime<Config>,
-  evmClient: EvmClient,
-  receiver: Address,
-  info: ReceiverInfo,
-  performData: Hex,
-  label: string,
-): bigint | null {
-  try {
-    const estimate = evmClient
-      .estimateGas(runtime, {
-        msg: encodeCallMsg({
-          from: info.forwarder,
-          to: receiver,
-          data: encodeFunctionData({
-            abi: IAaveDepositorReceiver,
-            functionName: 'onReport',
-            args: [info.expectedWorkflowId, performData],
-          }),
-        }),
-      })
-      .result();
-    runtime.log(`[${label}] estimateGas(onReport) from ${info.forwarder} = ${estimate.gas}`);
-    return estimate.gas;
-  } catch (e) {
-    runtime.log(`[${label}] estimateGas failed for onReport — skipping: ${e}`);
-    return null;
-  }
-}
-
+// The estimate impersonates the forwarder with the pinned workflow id as metadata, and
+// only gates the write (revert, or batch over the quota); the write requests the full quota.
 export function submitCalls(
   runtime: Runtime<Config>,
   evmClient: EvmClient,
@@ -126,14 +96,18 @@ export function submitCalls(
   performData: Hex,
   label: string,
 ): string | null {
-  const estimate = estimateOnReport(runtime, evmClient, receiver, info, performData, label);
+  const estimate = estimateOnReport(runtime, evmClient, receiver, performData, label, {
+    from: info.forwarder,
+    metadata: info.expectedWorkflowId,
+  });
   if (estimate === null) return null;
-  const gasLimit = withHeadroom(estimate);
-  if (gasLimit > MAX_WRITE_GAS) {
-    runtime.log(`[${label}] gas ${gasLimit} exceeds max write gas ${MAX_WRITE_GAS} — skipping`);
+  if (estimate > MAX_WRITE_GAS) {
+    runtime.log(
+      `[${label}] estimate ${estimate} exceeds max write gas ${MAX_WRITE_GAS} — skipping`,
+    );
     return null;
   }
-  return writeSignedReport(runtime, evmClient, receiver, performData, label, gasLimit);
+  return writeSignedReport(runtime, evmClient, receiver, performData, label, MAX_WRITE_GAS);
 }
 
 export const onCronTrigger = (runtime: Runtime<Config>): string => {

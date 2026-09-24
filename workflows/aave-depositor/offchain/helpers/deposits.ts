@@ -1,5 +1,6 @@
 import type {Hex} from 'viem';
-import {calculateUsdValue, formatUsd} from './math';
+import {calculateUsdValue} from './math';
+import {formatUsd} from './format';
 import {isActive, type ActiveReserve, type Reserve} from './reserves';
 import {stewardCall, type StewardContext} from './steward';
 
