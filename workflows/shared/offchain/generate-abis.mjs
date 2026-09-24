@@ -13,7 +13,7 @@ const REPO_ROOT = resolve(HERE, '../../..');
 const OUT_DIR = resolve(REPO_ROOT, 'out');
 const ABI_DIR = resolve(HERE, 'abi');
 
-const ABIS = [{name: 'IAaveCREReceiver'}, {name: 'IHub'}];
+const ABIS = [{name: 'IAaveCREReceiver'}, {name: 'IHub'}, {name: 'IGsmFeeClaimerReceiver'}];
 
 function runForgeBuild() {
   console.log('▸ forge build');
