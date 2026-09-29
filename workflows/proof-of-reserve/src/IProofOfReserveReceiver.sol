@@ -17,28 +17,38 @@ interface IProofOfReserveExecutor {
 
 /// @title IProofOfReserveReceiver
 /// @notice Robot that runs an Aave Proof of Reserve executor's emergency action
-/// when a reserve becomes unbacked. Native CRE re-implementation of BGD Labs'
-/// `ProofOfReserveKeeper`.
+/// when a reserve becomes unbacked.
 /// @dev `checkData` and the `report` are both `abi.encode(address executor)`.
 interface IProofOfReserveReceiver is IAaveCREReceiver {
   /// @notice Emitted when the emergency action is executed on an executor.
   /// @param executor The executor the emergency action ran on.
   event EmergencyActionExecuted(address indexed executor);
 
-  /// @notice Emitted when an executor is excluded from / included in automation.
-  /// @param executor The executor toggled.
-  /// @param disabled Whether the executor is now excluded from automation.
-  event ExecutorDisabled(address indexed executor, bool disabled);
+  /// @notice Emitted when an executor is added to or removed from the automation allowlist.
+  /// @param executor The executor updated.
+  /// @param enabled Whether the executor is now enabled for automation.
+  event ExecutorStatusUpdated(address indexed executor, bool enabled);
 
   /// @notice Thrown when `onReport` runs but the executor's emergency action is not possible.
   error EmergencyActionNotPossible();
 
-  /// @notice Whether an executor is excluded from automation.
-  /// @param executor The executor to query.
-  function isDisabled(address executor) external view returns (bool);
+  /// @notice Thrown when trying to enable the zero address as an executor.
+  error InvalidExecutor();
 
-  /// @notice Exclude or include an executor from automation. Owner or guardian.
-  /// @param executor The executor to toggle.
-  /// @param disabled Whether to exclude the executor from automation.
-  function setDisabled(address executor, bool disabled) external;
+  /// @notice Thrown when enabling / disabling an executor that already has that status.
+  /// @param executor The executor updated.
+  /// @param enabled The status that was requested.
+  error ExecutorStatusUnchanged(address executor, bool enabled);
+
+  /// @notice Add an executor to the automation allowlist. Owner-only.
+  /// @param executor The executor to enable. Must be non-zero and not already enabled.
+  function enableExecutor(address executor) external;
+
+  /// @notice Remove an executor from the automation allowlist. Owner or guardian.
+  /// @param executor The executor to disable. Must be currently enabled.
+  function disableExecutor(address executor) external;
+
+  /// @notice Whether an executor is enabled for automation.
+  /// @param executor The executor to query.
+  function isExecutorEnabled(address executor) external view returns (bool);
 }

@@ -1,9 +1,8 @@
 # ProofOfReserve
 
 CRE robot that runs an Aave [Proof of Reserve](https://github.com/aave-dao/aave-proof-of-reserve)
-executor's emergency action when a reserve becomes unbacked — freezing the
-affected reserves to protect the pool. Native CRE re-implementation of BGD Labs'
-`ProofOfReserveKeeper`. Avalanche only.
+executor's emergency action when a reserve becomes unbacked, freezing the
+affected reserves. Replaces BGD Labs' `ProofOfReserveKeeper`. Avalanche only.
 
 ## Layout
 
@@ -14,7 +13,9 @@ proof-of-reserve/
 │   └── IProofOfReserveReceiver.sol       # robot interface + minimal executor interface
 ├── tests/
 │   ├── ProofOfReserveReceiver.t.sol      # unit tests (vm.mockCall against the executor)
-│   └── ProofOfReserveReceiver.fork.t.sol # fork tests against the live Avalanche executors
+│   ├── ProofOfReserveReceiver.fork.t.sol # fork tests against the live Avalanche executors
+│   └── helpers/
+│       └── ProofOfReserveReceiverHarness.sol
 ├── scripts/
 │   └── DeployProofOfReserveReceiver.s.sol # stand-alone forge deploy
 └── offchain/                             # CRE workflow — see offchain/README.md
@@ -30,21 +31,29 @@ proof-of-reserve/
   (`isEmergencyActionPossible()`). `checkData` is `abi.encode(address executor)`.
 - `onReport(metadata, executor)` — re-validates the executor and calls
   `executeEmergencyAction()`. Reverts `EmergencyActionNotPossible` if the executor
-  is no longer actionable (a stale report).
+  is no longer actionable.
 
-`onReport` is intentionally **permissionless**: `metadata` and `msg.sender` are
-ignored. Justification — `executeEmergencyAction` is itself permissionless (anyone
-may trigger it; it only freezes reserves that actually fail proof-of-reserve
-validation), so restricting who delivers the report adds no security. No on-chain
-role is required.
+`onReport` is **permissionless**: `metadata` and `msg.sender` are ignored. It only
+acts on allowlisted executors, and `executeEmergencyAction` is permissionless
+itself, so restricting who delivers the report adds no security. No on-chain role
+is required.
 
 ### State
 
-- `_disabled[executor]` — excludes an executor from automation. `checkUpkeep` and
-  `onReport` both skip disabled executors. Toggled via `setDisabled(executor, disabled)`,
-  owner or guardian.
+- `_enabled[executor]` — allowlist of executors the robot acts on. `checkUpkeep`
+  returns false and `onReport` reverts `EmergencyActionNotPossible` for any executor
+  not on the list.
+- The initial allowlist is set in the constructor.
+- `enableExecutor(executor)` — owner-only. Reverts `InvalidExecutor` for the zero
+  address and `ExecutorStatusUnchanged` if already enabled.
+- `disableExecutor(executor)` — owner or guardian (emergency off-switch). Reverts
+  `ExecutorStatusUnchanged` if not enabled.
+- Both emit `ExecutorStatusUpdated(executor, enabled)`.
+- The contract is `Rescuable`; the owner is the rescue guardian.
 
 ## Configuration
+
+The workflow runs every 30 seconds (`*/30 * * * * *`, the CRE cron minimum).
 
 One entry per executor. The Avalanche executors are the V2 and V3 Proof of Reserve
 executors — see [`offchain/config.production.json`](offchain/config.production.json).
@@ -62,8 +71,8 @@ cd workflows/proof-of-reserve/offchain && bun test                              
 
 The fork suite forks Avalanche against the live V2/V3 executors, asserts the
 minimal local interface matches the real deployed ABIs, and exercises the revert
-path (a backed executor → `EmergencyActionNotPossible`). It skips entirely when
-`RPC_AVALANCHE` is unset.
+path (a backed, enabled executor → `EmergencyActionNotPossible`). It fails if no
+executor is currently backed.
 
 `workflow.test.ts` mocks the cre-sdk EVM client via `EvmMock` and drives
 `createExecutorHandler` end-to-end for each branch. Generic helpers
@@ -74,12 +83,14 @@ Requires `bun` on PATH.
 ## Deployment
 
 `ProofOfReserveReceiver` deploys stand-alone. `DeployProofOfReserveReceiver` uses
-`GovernanceV3Avalanche.EXECUTOR_LVL_1` / `GOVERNANCE_GUARDIAN` as owner / guardian.
+`GovernanceV3Avalanche.EXECUTOR_LVL_1` / `GOVERNANCE_GUARDIAN` as owner / guardian
+and enables `AaveV2Avalanche.PROOF_OF_RESERVE` / `AaveV3Avalanche.PROOF_OF_RESERVE`
+in the constructor.
 
 ```bash
 # from repo root, with ACCOUNT_NAME=<your-keystore-name> in .env
-forge script workflows/proof-of-reserve/scripts/DeployProofOfReserveReceiver.s.sol \
-  --rpc-url avalanche --account $ACCOUNT_NAME --broadcast --verify
+make deploy-proof-of-reserve env=Avalanche dry=true   # simulate
+make deploy-proof-of-reserve env=Avalanche            # broadcast
 ```
 
 ### Post-deploy
@@ -89,11 +100,10 @@ forge script workflows/proof-of-reserve/scripts/DeployProofOfReserveReceiver.s.s
 2. (Re)deploy the CRE workflow through the owner Safe — see
    [`offchain/README.md`](offchain/README.md).
 
-No on-chain role is required — `executeEmergencyAction` is permissionless.
-
 Post-deploy checks (substitute the deployed `<receiver>`):
 
 ```bash
 cast call <receiver> "owner()(address)" --rpc-url avalanche
 cast call <receiver> "guardian()(address)" --rpc-url avalanche
+cast call <receiver> "isExecutorEnabled(address)(bool)" <executor> --rpc-url avalanche
 ```

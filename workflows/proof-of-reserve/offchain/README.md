@@ -3,18 +3,9 @@
 Off-chain CRE workflow driving [`ProofOfReserveReceiver`](../src/ProofOfReserveReceiver.sol).
 On each cron tick, for every configured executor it calls the receiver's
 `checkUpkeep`; when an emergency action is needed it signs the returned
-`performData` and writes it back as the receiver's `onReport`. The executor address
-rides in `checkData`, so the workflow performs no off-chain reads.
+`performData` and writes it back as the receiver's `onReport`.
 
-## Files
-
-| File                     | Purpose                                                                  |
-| ------------------------ | ------------------------------------------------------------------------ |
-| `main.ts`                | Entry point — builds the runner from `config.production.json`.           |
-| `workflow.ts`            | `initWorkflow` (one handler per executor) + `createExecutorHandler`.     |
-| `types.ts`               | Zod config schema (`schedule`, `evms[].receiver`, `evms[].executors[]`). |
-| `config.production.json` | Per-chain receiver + executors (Avalanche only).                         |
-| `workflow.test.ts`       | `bun test` unit suite (mocked cre-sdk EVM client).                       |
+## Config
 
 `receiver` is filled in after the `ProofOfReserveReceiver` is deployed on Avalanche;
 `executors` come from `aave-address-book` (`AaveV2Avalanche.PROOF_OF_RESERVE` /

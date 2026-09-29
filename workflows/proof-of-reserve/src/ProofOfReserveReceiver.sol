@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {OwnableWithGuardian} from 'solidity-utils/contracts/access-control/OwnableWithGuardian.sol';
 import {IERC165} from 'openzeppelin-contracts/contracts/utils/introspection/IERC165.sol';
+import {Rescuable} from 'aave-v4/utils/Rescuable.sol';
 
 import {IReceiver} from 'aave-cre/IReceiver.sol';
 import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
@@ -13,18 +14,34 @@ import {IProofOfReserveReceiver, IProofOfReserveExecutor} from './IProofOfReserv
 /// @notice Receives reports from the CRE workflow and runs a Proof of Reserve
 /// executor's emergency action when a reserve becomes unbacked. Native CRE
 /// re-implementation of BGD Labs' `ProofOfReserveKeeper`.
-/// @dev `executeEmergencyAction` is permissionless (gated by the executor's own
-/// backing check), so this contract needs no on-chain role. It only reads state
-/// and forwards the call.
-contract ProofOfReserveReceiver is IProofOfReserveReceiver, OwnableWithGuardian {
-  mapping(address executor => bool) internal _disabled;
+/// @dev Needs no on-chain role: `executeEmergencyAction` is permissionless.
+contract ProofOfReserveReceiver is IProofOfReserveReceiver, OwnableWithGuardian, Rescuable {
+  mapping(address executor => bool) internal _enabled;
 
   /// @param initialOwner_ The address of the initial owner.
   /// @param initialGuardian_ The address of the initial guardian.
+  /// @param initialExecutors_ The executors enabled for automation at deployment.
   constructor(
     address initialOwner_,
-    address initialGuardian_
-  ) OwnableWithGuardian(initialOwner_, initialGuardian_) {}
+    address initialGuardian_,
+    address[] memory initialExecutors_
+  ) OwnableWithGuardian(initialOwner_, initialGuardian_) {
+    for (uint256 i = 0; i < initialExecutors_.length; i++) {
+      _enableExecutor(initialExecutors_[i]);
+    }
+  }
+
+  /// @inheritdoc IProofOfReserveReceiver
+  function enableExecutor(address executor) external onlyOwner {
+    _enableExecutor(executor);
+  }
+
+  /// @inheritdoc IProofOfReserveReceiver
+  function disableExecutor(address executor) external onlyOwnerOrGuardian {
+    require(_enabled[executor], ExecutorStatusUnchanged(executor, false));
+    _enabled[executor] = false;
+    emit ExecutorStatusUpdated(executor, false);
+  }
 
   /// @inheritdoc IAaveCREReceiver
   function checkUpkeep(
@@ -45,14 +62,8 @@ contract ProofOfReserveReceiver is IProofOfReserveReceiver, OwnableWithGuardian 
   }
 
   /// @inheritdoc IProofOfReserveReceiver
-  function isDisabled(address executor) public view returns (bool) {
-    return _disabled[executor];
-  }
-
-  /// @inheritdoc IProofOfReserveReceiver
-  function setDisabled(address executor, bool disabled) external onlyOwnerOrGuardian {
-    _disabled[executor] = disabled;
-    emit ExecutorDisabled(executor, disabled);
+  function isExecutorEnabled(address executor) external view returns (bool) {
+    return _enabled[executor];
   }
 
   /// @inheritdoc IERC165
@@ -63,12 +74,25 @@ contract ProofOfReserveReceiver is IProofOfReserveReceiver, OwnableWithGuardian 
       interfaceId == type(IERC165).interfaceId;
   }
 
-  /// @dev The emergency action should run when the executor is enabled for
-  /// automation, not all of its reserves are backed, and the action would change
-  /// state.
+  function _enableExecutor(address executor) internal {
+    require(executor != address(0), InvalidExecutor());
+    require(!_enabled[executor], ExecutorStatusUnchanged(executor, true));
+    _enabled[executor] = true;
+    emit ExecutorStatusUpdated(executor, true);
+  }
+
+  /// @dev Returns true only when:
+  /// - the executor is enabled (the zero address never is);
+  /// - not all of its reserves are backed;
+  /// - the emergency action would change state.
   function _shouldExecute(address executor) internal view returns (bool) {
-    if (executor == address(0) || _disabled[executor]) return false;
+    if (!_enabled[executor]) return false;
     IProofOfReserveExecutor e = IProofOfReserveExecutor(executor);
     return !e.areAllReservesBacked() && e.isEmergencyActionPossible();
+  }
+
+  /// @inheritdoc Rescuable
+  function _rescueGuardian() internal view override returns (address) {
+    return owner();
   }
 }
