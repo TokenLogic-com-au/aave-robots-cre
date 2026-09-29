@@ -6,11 +6,11 @@ import {Test} from 'forge-std/Test.sol';
 import {AaveV2Avalanche} from 'aave-address-book/AaveV2Avalanche.sol';
 import {AaveV3Avalanche} from 'aave-address-book/AaveV3Avalanche.sol';
 
-import {ProofOfReserveReceiver} from '../src/ProofOfReserveReceiver.sol';
 import {IProofOfReserveReceiver, IProofOfReserveExecutor} from '../src/IProofOfReserveReceiver.sol';
+import {ProofOfReserveReceiverHarness} from './helpers/ProofOfReserveReceiverHarness.sol';
 
 contract ProofOfReserveReceiverForkTest is Test {
-  ProofOfReserveReceiver internal robot;
+  ProofOfReserveReceiverHarness internal robot;
   address internal owner = makeAddr('fork-owner');
   address internal guardian = makeAddr('fork-guardian');
   address internal anyone = makeAddr('fork-anyone');
@@ -20,11 +20,13 @@ contract ProofOfReserveReceiverForkTest is Test {
 
   function setUp() public {
     vm.createSelectFork(vm.envString('RPC_AVALANCHE'));
-    robot = new ProofOfReserveReceiver(owner, guardian);
+    address[] memory executors = new address[](2);
+    executors[0] = executorV2;
+    executors[1] = executorV3;
+    robot = new ProofOfReserveReceiverHarness(owner, guardian, executors);
   }
 
-  /// The minimal local interface must match the real deployed ABIs — exercise
-  /// the read path checkUpkeep relies on, against the real executors.
+  /// Checks the local `IProofOfReserveExecutor` matches the deployed executors.
   function test_fork_readPath_interfacesMatch() public view {
     IProofOfReserveExecutor(executorV2).areAllReservesBacked();
     IProofOfReserveExecutor(executorV2).isEmergencyActionPossible();
@@ -39,22 +41,16 @@ contract ProofOfReserveReceiverForkTest is Test {
 
   function test_fork_onReport_revertsNotPossible_whenReservesBacked() public {
     address executor = _findBackedExecutor();
-    if (executor == address(0)) {
-      vm.skip(true);
-    }
+    require(executor != address(0), 'no backed executor found on the fork');
+
     vm.prank(anyone);
     vm.expectRevert(IProofOfReserveReceiver.EmergencyActionNotPossible.selector);
     robot.onReport('', abi.encode(executor));
   }
 
   function _findBackedExecutor() internal view returns (address) {
-    if (!_shouldExecute(executorV2)) return executorV2;
-    if (!_shouldExecute(executorV3)) return executorV3;
+    if (!robot.shouldExecute(executorV2)) return executorV2;
+    if (!robot.shouldExecute(executorV3)) return executorV3;
     return address(0);
-  }
-
-  function _shouldExecute(address executor) internal view returns (bool) {
-    IProofOfReserveExecutor e = IProofOfReserveExecutor(executor);
-    return !e.areAllReservesBacked() && e.isEmergencyActionPossible();
   }
 }
