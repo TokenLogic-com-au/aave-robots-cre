@@ -1,4 +1,5 @@
 import {
+  bigintToProtoBigInt,
   bytesToHex,
   cre,
   encodeCallMsg,
@@ -12,14 +13,16 @@ import {IAaveCREReceiverABI} from './abi/IAaveCREReceiver';
 
 type EvmClient = InstanceType<typeof cre.capabilities.EVMClient>;
 
-/// Calls `checkUpkeep(checkData)` on the robot. Returns `performData` if the
-/// robot wants `onReport` submitted this tick, or `null` if not.
+/// Calls `checkUpkeep(checkData)` on the robot, at `blockNumber` if given (latest block
+/// otherwise). Returns `performData` if the robot wants `onReport` submitted this tick,
+/// or `null` if not.
 export function shouldSubmit<TConfig>(
   runtime: Runtime<TConfig>,
   evmClient: EvmClient,
   robotAddress: string,
   checkData: Hex,
   label: string,
+  blockNumber?: bigint,
 ): Hex | null {
   const calldata = encodeFunctionData({
     abi: IAaveCREReceiverABI,
@@ -31,6 +34,7 @@ export function shouldSubmit<TConfig>(
     const call = evmClient
       .callContract(runtime, {
         call: encodeCallMsg({from: zeroAddress, to: robotAddress as Hex, data: calldata}),
+        ...(blockNumber === undefined ? {} : {blockNumber: bigintToProtoBigInt(blockNumber)}),
       })
       .result();
     data = bytesToHex(call.data);
