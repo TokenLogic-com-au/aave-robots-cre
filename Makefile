@@ -22,13 +22,17 @@ deploy-account :; forge script ${contract} --rpc-url ${chain} --account ${ACCOUN
 
 DEPLOY_CHAIN_Mainnet := mainnet
 DEPLOY_CHAIN_Devnet := tenderly_devnet
+DEPLOY_CHAIN_Avalanche := avalanche
+DEPLOY_CHAIN_Optimism := optimism
+DEPLOY_CHAIN_Arbitrum := arbitrum
+DEPLOY_CHAIN_Base := base
 
 # Tenderly virtual testnets verify against <rpc-url>/verify with a custom verifier;
 # mainnet uses the default Etherscan verifier (foundry.toml [etherscan] + ETHERSCAN_API_KEY).
 DEPLOY_VERIFIER_Devnet := --verifier custom --verifier-url $(RPC_TENDERLY_DEVNET)/verify
 
-deploy-fee-shares-minter :; @[ -n "$(DEPLOY_CHAIN_${env})" ] || { echo "ERROR: pass 'env=Mainnet' or 'env=Devnet'"; exit 1; }; \
+deploy-fee-shares-minter :; @case "${env}" in Mainnet|Devnet) ;; *) echo "ERROR: pass 'env=Mainnet' or 'env=Devnet'"; exit 1;; esac; \
 	make deploy-account contract=workflows/fee-shares-minter/scripts/DeployFeeSharesMinter.s.sol:DeployFeeSharesMinter chain=$(DEPLOY_CHAIN_${env}) verifier="$(DEPLOY_VERIFIER_${env})" dry=${dry}
 
-deploy-refresh-rewards :; @[ -n "$(DEPLOY_CHAIN_${env})" ] || { echo "ERROR: pass 'env=Mainnet' or 'env=Devnet'"; exit 1; }; \
+deploy-refresh-rewards :; @case "${env}" in Mainnet|Avalanche|Optimism|Arbitrum|Base) ;; *) echo "ERROR: pass 'env=' one of Mainnet, Avalanche, Optimism, Arbitrum, Base"; exit 1;; esac; \
 	make deploy-account contract=workflows/refresh-rewards/scripts/DeployRefreshRewardsReceiver.s.sol:DeployRefreshRewardsReceiver chain=$(DEPLOY_CHAIN_${env}) verifier="$(DEPLOY_VERIFIER_${env})" dry=${dry}
