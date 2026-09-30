@@ -1,69 +1,58 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {IUmbrella} from 'aave-address-book/common/IUmbrella.sol';
+
 import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
 
-/// @notice Minimal view of an Aave Umbrella stake token (`UmbrellaStakeToken`).
+/// @notice `UmbrellaStakeToken` getters read by the robot.
 interface IUmbrellaStakeToken {
-  /// @notice Assets that could currently be slashed from this stake token.
   function getMaxSlashableAssets() external view returns (uint256);
 
-  /// @notice Whether the stake token is paused (slashing is blocked while paused).
   function paused() external view returns (bool);
 }
 
-/// @notice Minimal view of the Aave Umbrella coordinator.
-interface IUmbrella {
-  /// @notice Data configured for a stake token. Only `reserve` is used here.
-  struct StakeTokenData {
-    address underlyingOracle;
-    address reserve;
-  }
-
-  /// @notice All stake tokens registered on Umbrella.
-  function getStkTokens() external view returns (address[] memory);
-
-  /// @notice Config for a stake token (carries the reserve it covers).
-  function getStakeTokenData(address stakeToken) external view returns (StakeTokenData memory);
-
-  /// @notice Whether `reserve` has a deficit that can be slashed, and by how much.
-  function isReserveSlashable(address reserve) external view returns (bool flag, uint256 amount);
-
-  /// @notice Slash `reserve` to cover its deficit. Permissionless (gated by the deficit check).
-  function slash(address reserve) external returns (uint256);
-}
-
 /// @title ISlashingReceiver
-/// @notice Robot that triggers Umbrella slashing on reserves that have a
-/// slashable deficit. Native CRE re-implementation of BGD Labs' `SlashingRobot`.
-/// @dev `checkData` is unused (the Umbrella is an immutable of the contract); the
-/// `report` is `abi.encode(address[] reserves)`.
+/// @notice Robot that triggers Umbrella slashing on reserves that have a slashable deficit.
+/// @dev `checkData` is unused (the Umbrella is an immutable of the contract); `performData`
+/// and the `report` are `abi.encode(address[] reserves)`.
 interface ISlashingReceiver is IAaveCREReceiver {
   /// @notice Emitted for each reserve slashed by `onReport`.
   /// @param reserve The reserve that was slashed.
   /// @param amount Amount of the deficit covered.
   event ReserveSlashed(address indexed reserve, uint256 amount);
 
-  /// @notice Emitted when a reserve is excluded from / included in automation.
-  /// @param reserve The reserve toggled.
+  /// @notice Emitted when a reserve is excluded from or included back into automation.
+  /// @param reserve The reserve updated.
   /// @param disabled Whether the reserve is now excluded from automation.
   event ReserveDisabled(address indexed reserve, bool disabled);
 
   /// @notice Thrown when `onReport` runs but no reserve in the batch was slashed.
   error NoSlashesPerformed();
 
+  /// @notice Thrown when the Umbrella passed to the constructor is the zero address.
+  error InvalidUmbrella();
+
+  /// @notice Thrown when disabling / enabling a reserve that already has that status.
+  /// @param reserve The reserve updated.
+  /// @param disabled The status that was requested.
+  error ReserveStatusUnchanged(address reserve, bool disabled);
+
   /// @notice The Umbrella coordinator this robot slashes through.
   function UMBRELLA() external view returns (IUmbrella);
 
-  /// @notice Max reserves returned by a single `checkUpkeep` (the rest are picked up next tick).
+  /// @notice Max reserves returned by a single `checkUpkeep`.
   function MAX_CHECK_SIZE() external pure returns (uint256);
+
+  /// @notice Exclude a reserve from automation. Owner or guardian.
+  /// @param reserve The reserve to disable. Must not be disabled already.
+  function disableReserve(address reserve) external;
+
+  /// @notice Include a previously disabled reserve back into automation. Owner-only.
+  /// @param reserve The reserve to enable. Must be currently disabled.
+  function enableReserve(address reserve) external;
 
   /// @notice Whether a reserve is excluded from automation.
   /// @param reserve The reserve to query.
   function isDisabled(address reserve) external view returns (bool);
-
-  /// @notice Exclude or include a reserve from automation. Owner or guardian.
-  /// @param reserve The reserve to toggle.
-  /// @param disabled Whether to exclude the reserve from automation.
-  function setDisabled(address reserve, bool disabled) external;
 }
