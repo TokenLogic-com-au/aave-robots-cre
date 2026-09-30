@@ -2,10 +2,10 @@
 
 CRE robot that registers reward tokens on Aave v3 stataTokens (static aTokens)
 when a reward is configured on the underlying aToken **after** the stataToken was
-created. stataTokens do not auto-track rewards added later, so their holders stop
-accruing until someone calls the permissionless `refreshRewardTokens()`. This
-robot detects that gap and calls it. Native CRE re-implementation of BGD Labs'
-[`RefreshRewardsRobot`](https://github.com/bgd-labs/static-a-token-v3).
+created. stataTokens don't pick up rewards added later: until someone calls the
+permissionless `refreshRewardTokens()`, that reward's emissions aren't distributed
+to stataToken holders (registration starts accounting from the current index).
+This robot calls it as soon as the reward shows up.
 
 ## Layout
 
@@ -13,10 +13,13 @@ robot detects that gap and calls it. Native CRE re-implementation of BGD Labs'
 refresh-rewards/
 ├── src/
 │   ├── RefreshRewardsReceiver.sol        # the robot — inherits IAaveCREReceiver, permissionless onReport
-│   └── IRefreshRewardsReceiver.sol       # robot interface + minimal stata/controller interfaces
+│   └── IRefreshRewardsReceiver.sol       # robot interface
 ├── tests/
 │   ├── RefreshRewardsReceiver.t.sol      # unit tests (vm.mockCall against factory/controller/stata)
-│   └── RefreshRewardsReceiver.fork.t.sol # fork tests against the live Ethereum STATA_FACTORY
+│   ├── RefreshRewardsReceiver.fork.t.sol # fork tests against the live factories of every covered chain
+│   ├── DeployRefreshRewardsReceiver.t.sol # per-chain deploy config vs offchain config
+│   └── helpers/
+│       └── RefreshRewardsReceiverHarness.sol
 ├── scripts/
 │   └── DeployRefreshRewardsReceiver.s.sol # stand-alone forge deploy
 └── offchain/                             # CRE workflow — see offchain/README.md
@@ -26,70 +29,74 @@ refresh-rewards/
 
 `RefreshRewardsReceiver` implements [`IAaveCREReceiver`](../shared/src/IAaveCREReceiver.sol):
 
-- `checkUpkeep((factory, controller)) → (needed, (controller, stataTokens[]))` —
-  read-only probe. Enumerates `factory.getStataTokens()`, and for each stataToken
-  reads the rewards configured on its aToken (`controller.getRewardsByAsset`) and
-  flags it if any reward is not yet registered (`isRegisteredRewardToken == false`),
-  up to `MAX_ACTIONS` (10) per tick.
-- `onReport(metadata, (controller, stataTokens[]))` — calls
-  `refreshRewardTokens()` on each stataToken that still needs it (re-validated
-  against `controller`, so a stale report can't force redundant refreshes).
-  Reverts `ConditionsNotMet` if none did.
+- `checkUpkeep(factory) → (needed, (factory, stataTokens[]))` — read-only probe.
+  Enumerates `factory.getStataTokens()` and flags each stataToken whose
+  `INCENTIVES_CONTROLLER` lists a reward for its aToken that isn't registered yet,
+  up to `MAX_ACTIONS` (10) per tick. Returns false if the factory isn't enabled.
+- `onReport(metadata, (factory, stataTokens[]))` — calls `refreshRewardTokens()`
+  on each stataToken that still needs it. Skips any stataToken the factory didn't
+  deploy (`factory.getStataToken(stata.asset()) != stata`). Reverts
+  `ConditionsNotMet` if the factory isn't enabled or nothing was refreshed.
 
-`onReport` is intentionally **permissionless**: `metadata` (workflow id / owner /
-name) and `msg.sender` (the forwarder) are both ignored. Justification —
-`refreshRewardTokens()` is itself permissionless on the stataToken (it only
-registers rewards the rewards-controller already lists), so restricting who
-delivers the report adds no security.
+The controller is read from each stataToken (`INCENTIVES_CONTROLLER`), the same
+one `refreshRewardTokens()` uses.
 
-### State
+`onReport` is **permissionless**: `metadata` and `msg.sender` are ignored. It only
+acts on stataTokens deployed by an enabled factory, and `refreshRewardTokens()` is
+permissionless itself, so restricting who delivers the report adds no security.
+No on-chain role is required.
 
-- `_disabled[stataToken]` — excludes a stataToken from automation. `checkUpkeep`
-  skips disabled tokens. Toggled via `setAutomationDisabled(stataToken, disabled)`,
-  owner or guardian.
+### State and access control
+
+- `_enabled[factory]` — allowlist of stataToken factories the robot acts on. New
+  stataTokens from an enabled factory are covered without any extra action.
+- The initial allowlist is set in the constructor.
+- `enableFactory(factory)` — owner-only. Reverts `InvalidFactory` for the zero
+  address and `FactoryStatusUnchanged` if already enabled.
+- `disableFactory(factory)` — owner or guardian (emergency off-switch). Reverts
+  `FactoryStatusUnchanged` if not enabled.
+- Both emit `FactoryStatusUpdated(factory, enabled)`.
+- The contract is `Rescuable`; the owner is the rescue guardian.
 
 ## Configuration
 
-One `(factory, controller)` pair per Aave pool. A chain with several pools (e.g.
-Ethereum Core + Prime) lists several; a single `RefreshRewardsReceiver` per chain
-serves them all — the pool addresses ride in `checkData`, not the constructor.
-See [`offchain/config.production.json`](offchain/config.production.json). Factory
-and controller addresses come from `aave-address-book`
-(`STATA_FACTORY` / `DEFAULT_INCENTIVES_CONTROLLER`).
+One receiver per chain, with that chain's stataToken factories (e.g. Ethereum Core
+and Lido) in [`offchain/config.production.json`](offchain/config.production.json).
+Factory addresses come from `aave-address-book` (`STATA_FACTORY`).
+
+Covered chains are the ones whose stataTokens have had rewards configured in the
+`RewardsController`: Ethereum (Core and Lido), Avalanche, Optimism, Arbitrum and
+Base. Adding one is a `getDeployConfig` entry, a config entry and a deploy.
 
 ## Testing
 
 ```bash
 # from repo root
 forge test --match-path 'workflows/refresh-rewards/tests/*.t.sol' --no-match-contract 'Fork' -vvv   # unit
-RPC_MAINNET=... forge test --match-contract 'RefreshRewardsReceiverFork' -vvv                        # fork
+forge test --match-contract 'RefreshRewardsReceiverFork' -vvv   # fork; needs RPC_MAINNET/AVALANCHE/OPTIMISM/ARBITRUM/BASE
 cd workflows/refresh-rewards/offchain && bun test                                                    # CRE workflow (bun)
 ```
 
-The fork suite forks Ethereum mainnet against the live
-[`STATA_FACTORY`](https://etherscan.io/address/0xCb0b5cA20b6C5C02A9A3B2cE433650768eD2974F),
-asserts the minimal local interfaces match the real deployed ABIs across the whole
-read path, and exercises both the revert path (fully-registered token →
-`ConditionsNotMet`) and the refresh path (scans for a stataToken with an
-unregistered reward; skips if none is). It skips entirely when `RPC_MAINNET` is unset.
+The fork suite checks every factory the deploy script enables on its chain, and
+runs a real refresh on Ethereum by appending a new reward to one aToken's list.
 
-`workflow.test.ts` mocks the cre-sdk EVM client via `EvmMock` and drives
-`createPoolHandler` end-to-end for each branch (no refresh, empty/reverting
-`checkUpkeep`, gas-estimate revert, happy path, non-SUCCESS write). Generic helpers
-(`encodeCheckUpkeepResult`, `CHECK_UPKEEP_SELECTOR`) live in
-[`../shared/offchain/testing/mocks.ts`](../shared/offchain/testing/mocks.ts).
-Requires `bun` on PATH.
+`workflow.test.ts` runs `createFactoryHandler` against a mocked cre-sdk EVM client
+(`EvmMock`) for each branch. Requires `bun` on PATH.
 
 ## Deployment
 
-`RefreshRewardsReceiver` deploys stand-alone. `DeployRefreshRewardsReceiver` uses
-`GovernanceV3Ethereum.EXECUTOR_LVL_1` as owner and
-`GovernanceV3Ethereum.GOVERNANCE_GUARDIAN` as guardian; adapt for other chains.
+`RefreshRewardsReceiver` deploys stand-alone, one per chain.
+`DeployRefreshRewardsReceiver` picks the config from `block.chainid`: the chain's
+`GovernanceV3<Chain>.EXECUTOR_LVL_1` / `GOVERNANCE_GUARDIAN` as owner / guardian,
+and its `STATA_FACTORY` (plus `AaveV3EthereumLido.STATA_FACTORY` on Ethereum)
+enabled in the constructor. `DeployRefreshRewardsReceiver.t.sol` checks these
+factories match `offchain/config.production.json`.
 
 ```bash
 # from repo root, with ACCOUNT_NAME=<your-keystore-name> in .env
-forge script workflows/refresh-rewards/scripts/DeployRefreshRewardsReceiver.s.sol \
-  --rpc-url mainnet --account $ACCOUNT_NAME --broadcast --verify
+# env: Mainnet, Avalanche, Optimism, Arbitrum or Base
+make deploy-refresh-rewards env=Avalanche dry=true   # simulate
+make deploy-refresh-rewards env=Avalanche            # broadcast
 ```
 
 ### Post-deploy
@@ -99,12 +106,10 @@ forge script workflows/refresh-rewards/scripts/DeployRefreshRewardsReceiver.s.so
 2. (Re)deploy the CRE workflow through the owner Safe — see
    [`offchain/README.md`](offchain/README.md).
 
-No on-chain role is required — `refreshRewardTokens()` is permissionless.
-
 Post-deploy checks (substitute the deployed `<receiver>`):
 
 ```bash
-cast call <receiver> "owner()(address)" --rpc-url mainnet
-cast call <receiver> "guardian()(address)" --rpc-url mainnet
-cast call <receiver> "MAX_ACTIONS()(uint256)" --rpc-url mainnet
+cast call <receiver> "owner()(address)" --rpc-url <chain>
+cast call <receiver> "guardian()(address)" --rpc-url <chain>
+cast call <receiver> "isFactoryEnabled(address)(bool)" <factory> --rpc-url <chain>
 ```
