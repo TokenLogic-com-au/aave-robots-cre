@@ -1,23 +1,23 @@
 # Slashing — CRE workflow
 
 Off-chain CRE workflow driving [`SlashingReceiver`](../src/SlashingReceiver.sol).
-On each cron tick it calls the receiver's `checkUpkeep`; when a reserve needs
-slashing it signs the returned `performData` and writes it back as the receiver's
-`onReport`. The receiver holds the Umbrella as an immutable and enumerates the
-stake tokens itself, so the workflow performs no off-chain reads and passes empty
-`checkData`.
+It calls the receiver's `checkUpkeep` (with empty `checkData`) and, when a reserve needs
+slashing, signs the returned `performData` and writes it back as the receiver's
+`onReport`. Two triggers run it:
 
-## Files
+- a log trigger on the Pool's `DeficitCreated` event (`LATEST` confidence), so a deficit
+  left by a liquidation is slashed within a few blocks, close to BGD's per-block robot;
+- the cron in `schedule` (hourly) as a fallback, for deficits that don't come from a
+  liquidation (e.g. a lowered Umbrella deficit offset) or a missed log.
 
-| File                     | Purpose                                                             |
-| ------------------------ | ------------------------------------------------------------------- |
-| `main.ts`                | Entry point — builds the runner from `config.production.json`.      |
-| `workflow.ts`            | `initWorkflow` (one handler per network) + `createReceiverHandler`. |
-| `types.ts`               | Zod config schema (`schedule`, `evms[].receiver`).                  |
-| `config.production.json` | Per-chain receiver (Ethereum only).                                 |
-| `workflow.test.ts`       | `bun test` unit suite (mocked cre-sdk EVM client).                  |
+For a log, `checkUpkeep` is read at the log's block; for the cron, at the latest block.
+Several `DeficitCreated` logs in one block start one execution each, so all but the
+first report may revert with `NoSlashesPerformed` onchain.
 
-`receiver` is filled in after the `SlashingReceiver` is deployed on Ethereum.
+## Config
+
+`receiver` is filled in after the `SlashingReceiver` is deployed on Ethereum. With an
+empty `receiver` the workflow has no trigger, so it can only be simulated once it's set.
 
 ## Setup
 
@@ -29,11 +29,15 @@ cd workflows/slashing/offchain && npm install   # or `make install` from repo ro
 
 ```bash
 # from workflows/ (the directory with project.yaml)
-cre workflow simulate ./slashing/offchain --target=slashing-production-settings --non-interactive --trigger-index=0
+cre workflow simulate ./slashing/offchain --env=../.env --target=slashing-production-settings --non-interactive --trigger-index=0
+
+# the DeficitCreated log trigger, replaying a real event (tx 0xfd76…c427 on mainnet)
+cre workflow simulate ./slashing/offchain --env=../.env --target=slashing-production-settings --non-interactive --trigger-index=1 \
+  --evm-tx-hash 0xfd76e2f691f2b18e4116d41d7842c7717b77674d3092827d58daad3dc6a9c427 --evm-event-index 4
 
 # --unsigned prints the tx for the owner Safe to propose (does not broadcast)
-cre workflow deploy   ./slashing/offchain --target=slashing-production-settings --unsigned
-cre workflow activate ./slashing/offchain --target=slashing-production-settings --unsigned --yes
+cre workflow deploy   ./slashing/offchain --env=../.env --target=slashing-production-settings --unsigned
+cre workflow activate ./slashing/offchain --env=../.env --target=slashing-production-settings --unsigned --yes
 ```
 
 Or via the `package.json` scripts (`npm run simulate:production`,
