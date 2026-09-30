@@ -30,5 +30,5 @@ DEPLOY_VERIFIER_Devnet := --verifier custom --verifier-url $(RPC_TENDERLY_DEVNET
 deploy-fee-shares-minter :; @[ -n "$(DEPLOY_CHAIN_${env})" ] || { echo "ERROR: pass 'env=Mainnet' or 'env=Devnet'"; exit 1; }; \
 	make deploy-account contract=workflows/fee-shares-minter/scripts/DeployFeeSharesMinter.s.sol:DeployFeeSharesMinter chain=$(DEPLOY_CHAIN_${env}) verifier="$(DEPLOY_VERIFIER_${env})" dry=${dry}
 
-deploy-slashing :; @[ -n "$(DEPLOY_CHAIN_${env})" ] || { echo "ERROR: pass 'env=Mainnet' or 'env=Devnet'"; exit 1; }; \
+deploy-slashing :; @case "${env}" in Mainnet|Devnet) ;; *) echo "ERROR: pass 'env=Mainnet' or 'env=Devnet'"; exit 1;; esac; \
 	make deploy-account contract=workflows/slashing/scripts/DeploySlashingReceiver.s.sol:DeploySlashingReceiver chain=$(DEPLOY_CHAIN_${env}) verifier="$(DEPLOY_VERIFIER_${env})" dry=${dry}
