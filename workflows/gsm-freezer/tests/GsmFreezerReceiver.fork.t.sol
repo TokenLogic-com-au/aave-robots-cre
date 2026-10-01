@@ -10,7 +10,10 @@ import {GhoEthereum} from 'aave-address-book/GhoEthereum.sol';
 import {AaveV3Ethereum, AaveV3EthereumAssets} from 'aave-address-book/AaveV3Ethereum.sol';
 
 import {GsmFreezerReceiver} from '../src/GsmFreezerReceiver.sol';
-import {IGsmFreezerReceiver, IGsm, IPoolAddressesProvider, IPriceOracle} from '../src/IGsmFreezerReceiver.sol';
+import {IPoolAddressesProvider} from 'aave-v3-origin/contracts/interfaces/IPoolAddressesProvider.sol';
+import {IPriceOracleGetter} from 'aave-v3-origin/contracts/interfaces/IPriceOracleGetter.sol';
+
+import {IGsmFreezerReceiver, IGsm} from '../src/IGsmFreezerReceiver.sol';
 
 contract GsmFreezerReceiverForkTest is Test {
   address internal constant GSM = GhoEthereum.GSM_USDC;
@@ -22,7 +25,7 @@ contract GsmFreezerReceiverForkTest is Test {
   address internal anyone = makeAddr('anyone');
 
   function setUp() public {
-    vm.createSelectFork(vm.envString('RPC_MAINNET'));
+    vm.createSelectFork('mainnet');
     robot = new GsmFreezerReceiver(
       GSM,
       UNDERLYING,
@@ -39,56 +42,49 @@ contract GsmFreezerReceiverForkTest is Test {
     );
   }
 
-  // Locks the read-path ABI against the real deployed GSM + Aave oracle. Runs
-  // unconditionally (no vm.skip): a signature drift on any of these reverts here.
+  /// Checks the local `IGsm` matches the deployed GSM.
   function test_fork_readPath_matchesRealGsm() public view {
     IGsm gsm = IGsm(GSM);
-    assertFalse(gsm.getIsSeized());
-    // SWAP_FREEZER_ROLE on the GSM equals the well-known constant, and the
-    // freshly-deployed robot does not hold it yet.
+    assertFalse(gsm.getIsSeized(), 'gsm is seized');
     bytes32 role = gsm.SWAP_FREEZER_ROLE();
-    assertEq(role, 0x6dac4cc0544e34aa1a4ed2862f6de78290e3f18f00fe77179ee8ef34de9dfa24);
-    assertFalse(gsm.hasRole(role, address(robot)));
+    assertEq(role, keccak256('SWAP_FREEZER_ROLE'), 'unexpected SWAP_FREEZER_ROLE');
+    assertFalse(gsm.hasRole(role, address(robot)), 'robot should not hold the role yet');
 
-    // The Aave oracle prices USDC ~ $1 (8 decimals), so checkUpkeep is a no-op
-    // that returns cleanly (also proves the price read matches the real oracle).
     (bool needed, ) = robot.checkUpkeep('');
-    assertFalse(needed);
+    assertFalse(needed, 'upkeep needed without the role');
   }
 
-  // End-to-end against the REAL GSM: grant the role (as governance would), simulate
-  // a depeg, and confirm an unpermissioned onReport freezes the real GSM.
   function test_fork_onReport_freezesRealGsm_whenDepegged() public {
     _grantFreezerRole();
     _mockPrice(0.90e8);
 
     (bool needed, bytes memory performData) = robot.checkUpkeep('');
-    assertTrue(needed);
+    assertTrue(needed, 'upkeep should be needed');
     assertEq(
       uint256(abi.decode(performData, (IGsmFreezerReceiver.Action))),
-      uint256(IGsmFreezerReceiver.Action.FREEZE)
+      uint256(IGsmFreezerReceiver.Action.FREEZE),
+      'expected FREEZE'
     );
 
     vm.prank(anyone);
     robot.onReport('', '');
 
-    assertTrue(IGsm(GSM).getIsFrozen());
+    assertTrue(IGsm(GSM).getIsFrozen(), 'gsm not frozen');
   }
 
-  // Once frozen and the price has recovered into the inner band, onReport unfreezes
-  // the real GSM (allowUnfreeze == true).
   function test_fork_onReport_unfreezesRealGsm_whenRecovered() public {
     _grantFreezerRole();
     _mockPrice(0.90e8);
     robot.onReport('', '');
-    assertTrue(IGsm(GSM).getIsFrozen());
+    assertTrue(IGsm(GSM).getIsFrozen(), 'gsm not frozen');
 
     _mockPrice(1e8);
     (bool needed, ) = robot.checkUpkeep('');
-    assertTrue(needed);
+    assertTrue(needed, 'unfreeze should be needed');
 
+    vm.prank(anyone);
     robot.onReport('', '');
-    assertFalse(IGsm(GSM).getIsFrozen());
+    assertFalse(IGsm(GSM).getIsFrozen(), 'gsm still frozen');
   }
 
   function _grantFreezerRole() internal {
@@ -102,7 +98,7 @@ contract GsmFreezerReceiverForkTest is Test {
       .getPriceOracle();
     vm.mockCall(
       oracle,
-      abi.encodeCall(IPriceOracle.getAssetPrice, (UNDERLYING)),
+      abi.encodeCall(IPriceOracleGetter.getAssetPrice, (UNDERLYING)),
       abi.encode(price)
     );
   }
