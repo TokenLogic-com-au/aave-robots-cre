@@ -64,6 +64,15 @@ jobs:
       - name: Offchain tests
         working-directory: workflows/fee-shares-minter/offchain
         run: bun test
+      - name: Install gsm-freezer deps
+        working-directory: workflows/gsm-freezer/offchain
+        run: npm ci
+      - name: Typecheck gsm-freezer
+        working-directory: workflows/gsm-freezer/offchain
+        run: npm run typecheck
+      - name: Offchain tests gsm-freezer
+        working-directory: workflows/gsm-freezer/offchain
+        run: bun test
 
   abis-up-to-date:
     runs-on: ubuntu-latest
