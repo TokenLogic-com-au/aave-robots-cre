@@ -1,9 +1,10 @@
 # GSM Freezer
 
-CRE robot that freezes (and unfreezes) [GSM](https://github.com/aave/gho-core)
-swaps when the underlying asset's oracle price leaves a configured band — the
-depeg protection for GHO's Gho Stability Modules. Native CRE re-implementation of
-the GSM `ChainlinkOracleSwapFreezer`. One receiver per GSM (Ethereum: USDC + USDT).
+CRE robot that freezes (and unfreezes) [GSM](https://github.com/aave/gho-core) swaps
+when the underlying asset's oracle price leaves a configured band, the depeg
+protection for GHO's stability modules. Native CRE port of the GSM
+[`OracleSwapFreezer`](https://github.com/aave/gho-core/blob/main/src/contracts/facilitators/gsm/swapFreezer/OracleSwapFreezer.sol).
+One receiver per GSM (Ethereum: USDC and USDT).
 
 ## Layout
 
@@ -11,7 +12,7 @@ the GSM `ChainlinkOracleSwapFreezer`. One receiver per GSM (Ethereum: USDC + USD
 gsm-freezer/
 ├── src/
 │   ├── GsmFreezerReceiver.sol        # the robot — inherits IAaveCREReceiver, permissionless onReport
-│   └── IGsmFreezerReceiver.sol       # robot interface + minimal IGsm / oracle interfaces
+│   └── IGsmFreezerReceiver.sol       # robot interface + minimal IGsm interface
 ├── tests/
 │   ├── GsmFreezerReceiver.t.sol      # unit tests (vm.mockCall against the GSM / oracle)
 │   └── GsmFreezerReceiver.fork.t.sol # fork tests that freeze the live Ethereum GSM
@@ -23,7 +24,7 @@ gsm-freezer/
 ## On-chain behavior
 
 `GsmFreezerReceiver` implements [`IAaveCREReceiver`](../shared/src/IAaveCREReceiver.sol),
-with the same decision logic as the GSM's audited `OracleSwapFreezer`:
+with the same decision logic as `OracleSwapFreezer`:
 
 - `checkUpkeep(_) → (needed, action)` — read-only probe. Returns `FREEZE` when the GSM
   is not frozen and the Aave V3 oracle price of the underlying (8-decimal USD) is
@@ -88,6 +89,10 @@ make deploy-gsm-freezer env=Mainnet         # broadcast + verify
 
 1. Governance grants `SWAP_FREEZER_ROLE` to each deployed receiver on its GSM. Until
    then `checkUpkeep` returns false, so the workflow can be registered first.
+   Governance should also revoke the role from the current `OracleSwapFreezer`s
+   (`GhoEthereum.GSM_USDC_ORACLE_SWAP_FREEZER` / `GSM_USDT_ORACLE_SWAP_FREEZER`):
+   anyone can call their `performUpkeep`, so `disableAutomation()` alone wouldn't
+   keep a manual freeze in place.
 2. Set each deployed address as a `receiver` in
    [`offchain/config.production.json`](offchain/config.production.json) (USDC + USDT).
 3. (Re)deploy the CRE workflow through the owner Safe — see

@@ -16,9 +16,9 @@ import {IGsmFreezerReceiver, IGsm} from './IGsmFreezerReceiver.sol';
 /// @notice Receives reports from the CRE workflow and freezes (or unfreezes) GSM swaps
 /// when the underlying's oracle price leaves a configured band. Native CRE port of the
 /// GSM `OracleSwapFreezer`.
-/// @dev Must hold `SWAP_FREEZER_ROLE` on the GSM. Unfreezing is permissionless too, so a
-/// manual freeze made while the price is in the unfreeze band needs `disableAutomation()`
-/// to stick.
+/// @dev Must hold `SWAP_FREEZER_ROLE` on the GSM. `onReport` is permissionless, unfreezing
+/// included, so a manual freeze made while the price is in the unfreeze band needs
+/// `disableAutomation()` to stick.
 contract GsmFreezerReceiver is IGsmFreezerReceiver, OwnableWithGuardian, Rescuable {
   /// @inheritdoc IGsmFreezerReceiver
   IGsm public immutable override GSM;
@@ -126,23 +126,29 @@ contract GsmFreezerReceiver is IGsmFreezerReceiver, OwnableWithGuardian, Rescuab
 
   /// @dev Same decision as `OracleSwapFreezer`: freeze when the price leaves the freeze
   /// band, unfreeze when it is back in the unfreeze band. `NONE` when disabled, without the
-  /// role, once the GSM is seized, or on a zero price.
+  /// role, once the GSM is seized, or on a zero price. The oracle is only read when an
+  /// action is possible.
   function _getAction() internal view returns (Action) {
     if (_disabled) return Action.NONE;
     if (!GSM.hasRole(GSM.SWAP_FREEZER_ROLE(), address(this))) return Action.NONE;
     if (GSM.getIsSeized()) return Action.NONE;
 
-    uint256 price = IPriceOracleGetter(ADDRESS_PROVIDER.getPriceOracle()).getAssetPrice(
-      UNDERLYING_ASSET
-    );
-    if (price == 0) return Action.NONE;
-
     if (!GSM.getIsFrozen()) {
-      if (price <= FREEZE_LOWER_BOUND || price >= FREEZE_UPPER_BOUND) return Action.FREEZE;
+      uint256 price = _getPrice();
+      if (price != 0 && (price <= FREEZE_LOWER_BOUND || price >= FREEZE_UPPER_BOUND)) {
+        return Action.FREEZE;
+      }
     } else if (ALLOW_UNFREEZE) {
-      if (price >= UNFREEZE_LOWER_BOUND && price <= UNFREEZE_UPPER_BOUND) return Action.UNFREEZE;
+      uint256 price = _getPrice();
+      if (price != 0 && price >= UNFREEZE_LOWER_BOUND && price <= UNFREEZE_UPPER_BOUND) {
+        return Action.UNFREEZE;
+      }
     }
     return Action.NONE;
+  }
+
+  function _getPrice() internal view returns (uint256) {
+    return IPriceOracleGetter(ADDRESS_PROVIDER.getPriceOracle()).getAssetPrice(UNDERLYING_ASSET);
   }
 
   /// @dev Same rules as `OracleSwapFreezer._validateBounds`.
