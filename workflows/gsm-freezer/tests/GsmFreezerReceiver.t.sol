@@ -99,8 +99,26 @@ contract GsmFreezerReceiverTest is Test {
     GsmFreezerReceiver freezeOnly = _deploy(_bounds(0, 0), false);
     assertFalse(freezeOnly.ALLOW_UNFREEZE(), 'allowUnfreeze should be false');
 
+    uint256[2][3] memory nonZero = [
+      [UNFREEZE_LOWER, UNFREEZE_UPPER],
+      [UNFREEZE_LOWER, uint256(0)],
+      [uint256(0), UNFREEZE_UPPER]
+    ];
+    for (uint256 i = 0; i < nonZero.length; i++) {
+      vm.expectRevert(IGsmFreezerReceiver.InvalidBounds.selector);
+      _deploy(_bounds(nonZero[i][0], nonZero[i][1]), false);
+    }
+  }
+
+  function test_constructor_freezeOnly_revertsWith_InvalidBounds_whenFreezeBoundsEqual() public {
+    IGsmFreezerReceiver.Bounds memory bounds = IGsmFreezerReceiver.Bounds({
+      freezeLowerBound: 1e8,
+      freezeUpperBound: 1e8,
+      unfreezeLowerBound: 0,
+      unfreezeUpperBound: 0
+    });
     vm.expectRevert(IGsmFreezerReceiver.InvalidBounds.selector);
-    _deploy(_bounds(UNFREEZE_LOWER, UNFREEZE_UPPER), false);
+    _deploy(bounds, false);
   }
 
   function test_supportsInterface() public view {
@@ -162,9 +180,16 @@ contract GsmFreezerReceiverTest is Test {
     _assertAction(robot, IGsmFreezerReceiver.Action.NONE);
   }
 
-  function test_checkUpkeep_doesNotUnfreeze_whenFreezeOnly() public {
+  /// Like `OracleSwapFreezer`, a frozen freeze-only robot has nothing to do and doesn't
+  /// read the oracle, so a reverting oracle can't make `checkUpkeep` revert.
+  function test_checkUpkeep_freezeOnly_skipsOracle_whenFrozen() public {
     GsmFreezerReceiver freezeOnly = _deploy(_bounds(0, 0), false);
     _mockStateFor(address(freezeOnly), 1e8, true, false, true);
+    vm.mockCallRevert(
+      oracle,
+      abi.encodeCall(IPriceOracleGetter.getAssetPrice, (underlying)),
+      'oracle down'
+    );
     _assertAction(freezeOnly, IGsmFreezerReceiver.Action.NONE);
   }
 

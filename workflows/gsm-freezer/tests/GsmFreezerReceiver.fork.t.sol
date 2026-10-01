@@ -46,6 +46,7 @@ contract GsmFreezerReceiverForkTest is Test {
   function test_fork_readPath_matchesRealGsm() public view {
     IGsm gsm = IGsm(GSM);
     assertFalse(gsm.getIsSeized(), 'gsm is seized');
+    assertFalse(gsm.getIsFrozen(), 'gsm already frozen on the fork');
     bytes32 role = gsm.SWAP_FREEZER_ROLE();
     assertEq(role, keccak256('SWAP_FREEZER_ROLE'), 'unexpected SWAP_FREEZER_ROLE');
     assertFalse(gsm.hasRole(role, address(robot)), 'robot should not hold the role yet');
@@ -75,6 +76,7 @@ contract GsmFreezerReceiverForkTest is Test {
   function test_fork_onReport_unfreezesRealGsm_whenRecovered() public {
     _grantFreezerRole();
     _mockPrice(0.90e8);
+    vm.prank(anyone);
     robot.onReport('', '');
     assertTrue(IGsm(GSM).getIsFrozen(), 'gsm not frozen');
 

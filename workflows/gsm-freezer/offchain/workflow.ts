@@ -8,8 +8,6 @@ export {configSchema};
 
 type EvmClient = InstanceType<typeof cre.capabilities.EVMClient>;
 
-// The receiver holds the GSM and bounds as immutables and re-derives the freeze
-// action from live state itself, so checkUpkeep takes no payload.
 const EMPTY_CHECK_DATA = '0x' as Hex;
 
 export function runForNetwork(
