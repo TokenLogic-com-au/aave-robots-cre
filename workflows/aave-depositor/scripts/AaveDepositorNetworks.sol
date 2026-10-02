@@ -5,10 +5,14 @@ import {AaveV3Ethereum} from 'aave-address-book/AaveV3Ethereum.sol';
 import {AaveV3Arbitrum} from 'aave-address-book/AaveV3Arbitrum.sol';
 import {AaveV3Base} from 'aave-address-book/AaveV3Base.sol';
 import {AaveV3Optimism} from 'aave-address-book/AaveV3Optimism.sol';
+import {AaveV3Avalanche} from 'aave-address-book/AaveV3Avalanche.sol';
+import {AaveV3Polygon} from 'aave-address-book/AaveV3Polygon.sol';
 import {GovernanceV3Ethereum} from 'aave-address-book/GovernanceV3Ethereum.sol';
 import {GovernanceV3Arbitrum} from 'aave-address-book/GovernanceV3Arbitrum.sol';
 import {GovernanceV3Base} from 'aave-address-book/GovernanceV3Base.sol';
 import {GovernanceV3Optimism} from 'aave-address-book/GovernanceV3Optimism.sol';
+import {GovernanceV3Avalanche} from 'aave-address-book/GovernanceV3Avalanche.sol';
+import {GovernanceV3Polygon} from 'aave-address-book/GovernanceV3Polygon.sol';
 
 /// @notice Per-network constructor arguments for `AaveDepositorReceiver`, shared by the
 /// deploy script and the fork test.
@@ -35,6 +39,12 @@ library AaveDepositorNetworks {
   address internal constant ARBITRUM_ROLES = 0xE2e4a8995440b70E810f0D94ae971B25829DC938;
   address internal constant BASE_ROLES = 0xBA25175FD3da510Ad9B1f550eA211A230Ca5F80d;
   address internal constant OPTIMISM_ROLES = 0x4b33Fd24ab9f9AA1dFFEa634E3Af64143C082436;
+
+  // Avalanche and Polygon share one KeystoneForwarder deployment.
+  address internal constant AVALANCHE_POLYGON_FORWARDER =
+    0x76c9cf548b4179F8901cda1f8623568b58215E62;
+  address internal constant AVALANCHE_ROLES = 0x5B9829172d39b6566f0A5f0E9BdD9D6DD6Ad3205;
+  address internal constant POLYGON_ROLES = 0x395721158D0D0E8492B35d172cFb0A8a759173bd;
 
   function get(uint256 chainId) internal pure returns (Network memory) {
     if (chainId == 1) {
@@ -79,6 +89,28 @@ library AaveDepositorNetworks {
           ROLE_KEY,
           GovernanceV3Optimism.EXECUTOR_LVL_1,
           GovernanceV3Optimism.GOVERNANCE_GUARDIAN
+        );
+    }
+    if (chainId == 43114) {
+      return
+        Network(
+          AVALANCHE_POLYGON_FORWARDER,
+          AVALANCHE_ROLES,
+          AaveV3Avalanche.POOL_EXPOSURE_STEWARD,
+          ROLE_KEY,
+          GovernanceV3Avalanche.EXECUTOR_LVL_1,
+          GovernanceV3Avalanche.GOVERNANCE_GUARDIAN
+        );
+    }
+    if (chainId == 137) {
+      return
+        Network(
+          AVALANCHE_POLYGON_FORWARDER,
+          POLYGON_ROLES,
+          AaveV3Polygon.POOL_EXPOSURE_STEWARD,
+          ROLE_KEY,
+          GovernanceV3Polygon.EXECUTOR_LVL_1,
+          GovernanceV3Polygon.GOVERNANCE_GUARDIAN
         );
     }
     revert('unsupported chain');

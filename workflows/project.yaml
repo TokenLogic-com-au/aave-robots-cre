@@ -14,7 +14,6 @@ production-settings:
 aave-depositor-ethereum-production-settings:
   account:
     workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
-    workflow-name: "deployer"
   rpcs:
     - chain-name: ethereum-mainnet
       url: ${RPC_MAINNET}
@@ -22,7 +21,6 @@ aave-depositor-ethereum-production-settings:
 aave-depositor-arbitrum-production-settings:
   account:
     workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
-    workflow-name: "deployer"
   rpcs:
     - chain-name: ethereum-mainnet-arbitrum-1
       url: ${RPC_ARBITRUM}
@@ -30,7 +28,6 @@ aave-depositor-arbitrum-production-settings:
 aave-depositor-base-production-settings:
   account:
     workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
-    workflow-name: "deployer"
   rpcs:
     - chain-name: ethereum-mainnet-base-1
       url: ${RPC_BASE}
@@ -38,7 +35,20 @@ aave-depositor-base-production-settings:
 aave-depositor-optimism-production-settings:
   account:
     workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
-    workflow-name: "deployer"
   rpcs:
     - chain-name: ethereum-mainnet-optimism-1
       url: ${RPC_OPTIMISM}
+
+aave-depositor-avalanche-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+  rpcs:
+    - chain-name: avalanche-mainnet
+      url: ${RPC_AVALANCHE}
+
+aave-depositor-polygon-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+  rpcs:
+    - chain-name: polygon-mainnet
+      url: ${RPC_POLYGON}

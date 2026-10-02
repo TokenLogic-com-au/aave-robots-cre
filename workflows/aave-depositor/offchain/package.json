@@ -29,7 +29,19 @@
     "deploy:optimism:unsigned": "cre workflow deploy ./aave-depositor/offchain --project-root=../.. --env=../../../.env --target=aave-depositor-optimism-production-settings --unsigned",
     "activate:optimism:unsigned": "cre workflow activate ./aave-depositor/offchain --project-root=../.. --env=../../../.env --target=aave-depositor-optimism-production-settings --unsigned --yes",
     "pause:optimism:unsigned": "cre workflow pause ./aave-depositor/offchain --project-root=../.. --env=../../../.env --target=aave-depositor-optimism-production-settings --unsigned --yes",
-    "delete:optimism:unsigned": "cre workflow delete ./aave-depositor/offchain --project-root=../.. --env=../../../.env --target=aave-depositor-optimism-production-settings --unsigned --yes"
+    "delete:optimism:unsigned": "cre workflow delete ./aave-depositor/offchain --project-root=../.. --env=../../../.env --target=aave-depositor-optimism-production-settings --unsigned --yes",
+    "simulate:avalanche": "cre workflow simulate ./aave-depositor/offchain --project-root=../.. --env=../../../.env --target=aave-depositor-avalanche-production-settings --non-interactive --trigger-index=0",
+    "deploy:avalanche": "cre workflow deploy ./aave-depositor/offchain --project-root=../.. --env=../../../.env --target=aave-depositor-avalanche-production-settings",
+    "deploy:avalanche:unsigned": "cre workflow deploy ./aave-depositor/offchain --project-root=../.. --env=../../../.env --target=aave-depositor-avalanche-production-settings --unsigned",
+    "activate:avalanche:unsigned": "cre workflow activate ./aave-depositor/offchain --project-root=../.. --env=../../../.env --target=aave-depositor-avalanche-production-settings --unsigned --yes",
+    "pause:avalanche:unsigned": "cre workflow pause ./aave-depositor/offchain --project-root=../.. --env=../../../.env --target=aave-depositor-avalanche-production-settings --unsigned --yes",
+    "delete:avalanche:unsigned": "cre workflow delete ./aave-depositor/offchain --project-root=../.. --env=../../../.env --target=aave-depositor-avalanche-production-settings --unsigned --yes",
+    "simulate:polygon": "cre workflow simulate ./aave-depositor/offchain --project-root=../.. --env=../../../.env --target=aave-depositor-polygon-production-settings --non-interactive --trigger-index=0",
+    "deploy:polygon": "cre workflow deploy ./aave-depositor/offchain --project-root=../.. --env=../../../.env --target=aave-depositor-polygon-production-settings",
+    "deploy:polygon:unsigned": "cre workflow deploy ./aave-depositor/offchain --project-root=../.. --env=../../../.env --target=aave-depositor-polygon-production-settings --unsigned",
+    "activate:polygon:unsigned": "cre workflow activate ./aave-depositor/offchain --project-root=../.. --env=../../../.env --target=aave-depositor-polygon-production-settings --unsigned --yes",
+    "pause:polygon:unsigned": "cre workflow pause ./aave-depositor/offchain --project-root=../.. --env=../../../.env --target=aave-depositor-polygon-production-settings --unsigned --yes",
+    "delete:polygon:unsigned": "cre workflow delete ./aave-depositor/offchain --project-root=../.. --env=../../../.env --target=aave-depositor-polygon-production-settings --unsigned --yes"
   },
   "license": "UNLICENSED",
   "dependencies": {

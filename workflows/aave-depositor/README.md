@@ -4,7 +4,7 @@ CRE robot that puts idle Aave Collector funds to work: it supplies reserve balan
 into the V3 pools and migrates residual V2 aTokens into V3, through the Aave
 `PoolExposureSteward` behind a Zodiac Roles Modifier. Native CRE re-implementation of
 the `bot-aave-depositor` workflow and its `AaveIntentExecutor`. One receiver and one
-workflow per chain: Ethereum, Arbitrum, Base and Optimism.
+workflow per chain: Ethereum, Arbitrum, Base, Optimism, Avalanche and Polygon.
 
 ## Layout
 
@@ -15,9 +15,10 @@ aave-depositor/
 │   └── IAaveDepositorReceiver.sol        # robot interface + minimal Roles / Steward interfaces
 ├── tests/
 │   ├── AaveDepositorReceiver.t.sol       # unit tests (mocked Roles Modifier)
-│   └── AaveDepositorReceiver.fork.t.sol  # fork test: AFC grants the role, a real depositV3 runs
+│   ├── AaveDepositorReceiver.fork.t.sol  # fork test: AFC grants the role, a real depositV3 runs
+│   └── AaveDepositorReceiverAvalanchePolygon.fork.t.sol  # fork test: AFC scopes the role, deposit + migration
 ├── scripts/
-│   ├── DeployAaveDepositorReceiver.s.sol # stand-alone forge deploy (Ethereum)
+│   ├── DeployAaveDepositorReceiver.s.sol # stand-alone forge deploy (any supported chain)
 │   └── AaveDepositorNetworks.sol         # per-chain forwarder / Roles / Steward / owner, shared with the fork test
 └── offchain/                             # CRE workflow — see offchain/README.md
 ```
@@ -73,6 +74,26 @@ Aave Finance Committee Safe (`MiscEthereum.AFC_SAFE`), which must:
 
 Until then `onReport` reverts. The fork test performs all three by impersonating the Safe.
 
+On Avalanche (`0x5B9829172d39b6566f0A5f0E9BdD9D6DD6Ad3205`) and Polygon
+(`0x395721158D0D0E8492B35d172cFb0A8a759173bd`) the AFC Roles Modifier is already enabled
+on the Safe, but as of 2026-10-01 the `aave_depositor` role doesn't allow the Steward:
+calls revert with `ConditionViolation(FunctionNotAllowed)`. On top of steps 2 and 3, the
+Safe must scope the role:
+
+- `scopeTarget(roleKey, steward)`;
+- `allowFunction(roleKey, steward, depositV3.selector, 0)`;
+- `allowFunction(roleKey, steward, migrateV2toV3.selector, 0)`.
+
+`AaveDepositorReceiverAvalanchePolygon.fork.t.sol` checks the current role rejects the
+call, applies that transaction, and runs a real deposit and V2 to V3 migration.
+
+### Not yet supported
+
+Monad, Plasma, Mantle and XLayer have no `PoolExposureSteward` in the address book (as
+of 2026-10-02), and no AFC Roles Modifier, so the robot has nothing to call there. They
+can be added to `AaveDepositorNetworks` once the Steward is deployed and the AFC sets up
+the role.
+
 ## Testing
 
 ```bash
@@ -94,6 +115,8 @@ make deploy-aave-depositor env=Mainnet         # broadcast + verify
 make deploy-aave-depositor env=Arbitrum
 make deploy-aave-depositor env=Base
 make deploy-aave-depositor env=Optimism
+make deploy-aave-depositor env=Avalanche
+make deploy-aave-depositor env=Polygon
 ```
 
 After deploying, paste the address into that chain's `offchain/config.<chain>.json` as
