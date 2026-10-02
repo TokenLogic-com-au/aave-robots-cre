@@ -1,0 +1,18 @@
+{
+  "$comment": "Addresses from https://github.com/bgd-labs/aave-address-book/blob/main/src/AaveV3Polygon.sol and AaveV2Polygon.sol; ignoredTokens = AAVE (no GHO reserve on Polygon). USD amounts have 8 decimals.",
+  "schedule": "0 0 12 */14 * *",
+  "chainName": "polygon-mainnet",
+  "isTestnet": false,
+  "receiver": "",
+  "dataProviderV3": "0x243Aa95cAC2a25651eda86e80bEe66114413c43b",
+  "collector": "0xe8599F3cc5D38a9aD6F3684cd5CEa72f10Dbc383",
+  "priceOracle": "0xb023e699F5a33916Ea823A16485e259257cA8Bd1",
+  "corePoolV3": "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+  "dataProviderV2": "0x7551b5D2763519d4e37e8B81929D336De671d46d",
+  "corePoolV2": "0x8dFf5E27EA6b7AC08EbFdf9eB090F32ee9a30fcf",
+  "depositMinUsd": "100000000000",
+  "migrationMinUsd": "500000000000",
+  "migrationBps": "9000",
+  "ignoredTokens": ["0xD6DF932A45C0f255f85145f286eA0b292B21C90B"],
+  "primeTokens": []
+}
