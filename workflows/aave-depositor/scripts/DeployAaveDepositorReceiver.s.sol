@@ -6,7 +6,7 @@ import {Script, console} from 'forge-std/Script.sol';
 import {AaveDepositorReceiver} from '../src/AaveDepositorReceiver.sol';
 import {AaveDepositorNetworks} from './AaveDepositorNetworks.sol';
 
-// make deploy-aave-depositor env=Mainnet|Arbitrum|Base|Optimism [dry=1]
+// make deploy-aave-depositor env=Mainnet|Arbitrum|Base|Optimism|Avalanche|Polygon [dry=1]
 contract DeployAaveDepositorReceiver is Script {
   function run() external returns (address) {
     AaveDepositorNetworks.Network memory net = AaveDepositorNetworks.get(block.chainid);

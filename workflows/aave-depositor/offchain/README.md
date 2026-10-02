@@ -5,7 +5,8 @@ On each cron tick it reads every active V3 reserve, prices, caps and Collector b
 builds one Steward call per eligible token (`depositV3`, and `migrateV2toV3` on chains
 with a V2 pool), asks the receiver's `checkUpkeep` to validate the batch, then signs it
 and writes it back as the receiver's `onReport`. One workflow instance per chain
-(`config.<chain>.json` + a target in `workflow.yaml`): Ethereum, Arbitrum, Base, Optimism.
+(`config.<chain>.json` + a target in `workflow.yaml`): Ethereum, Arbitrum, Base, Optimism,
+Avalanche, Polygon.
 
 ## Files
 
@@ -65,12 +66,12 @@ cd workflows/aave-depositor/offchain && npm install   # or `make install` from r
 
 ```bash
 # from workflows/ (the directory with project.yaml)
-# target = aave-depositor-<ethereum|arbitrum|base|optimism>-production-settings
-cre workflow simulate ./aave-depositor/offchain --target=aave-depositor-ethereum-production-settings --non-interactive --trigger-index=0
+# target = aave-depositor-<ethereum|arbitrum|base|optimism|avalanche|polygon>-production-settings
+cre workflow simulate ./aave-depositor/offchain --env=../.env --target=aave-depositor-ethereum-production-settings --non-interactive --trigger-index=0
 
 # --unsigned prints the tx for the owner Safe to propose (does not broadcast)
-cre workflow deploy   ./aave-depositor/offchain --target=aave-depositor-ethereum-production-settings --unsigned
-cre workflow activate ./aave-depositor/offchain --target=aave-depositor-ethereum-production-settings --unsigned --yes
+cre workflow deploy   ./aave-depositor/offchain --env=../.env --target=aave-depositor-ethereum-production-settings --unsigned
+cre workflow activate ./aave-depositor/offchain --env=../.env --target=aave-depositor-ethereum-production-settings --unsigned --yes
 ```
 
 After the workflow is deployed, pin it on the receiver with

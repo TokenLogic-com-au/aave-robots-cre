@@ -1,0 +1,21 @@
+{
+  "$comment": "Addresses from https://github.com/bgd-labs/aave-address-book/blob/main/src/AaveV3Avalanche.sol and AaveV2Avalanche.sol; ignoredTokens = GHO and AAVE.e. USD amounts have 8 decimals.",
+  "schedule": "0 0 12 */14 * *",
+  "chainName": "avalanche-mainnet",
+  "isTestnet": false,
+  "receiver": "",
+  "dataProviderV3": "0x243Aa95cAC2a25651eda86e80bEe66114413c43b",
+  "collector": "0x5ba7fd868c40c16f7aDfAe6CF87121E13FC2F7a0",
+  "priceOracle": "0xEBd36016B3eD09D4693Ed4251c67Bd858c3c7C9C",
+  "corePoolV3": "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+  "dataProviderV2": "0x65285E9dfab318f57051ab2b139ccCf232945451",
+  "corePoolV2": "0x4F01AeD16D97E3aB5ab2B501154DC9bb0F1A5A2C",
+  "depositMinUsd": "100000000000",
+  "migrationMinUsd": "500000000000",
+  "migrationBps": "9000",
+  "ignoredTokens": [
+    "0xfc421aD3C883Bf9E7C4f42dE845C4e4405799e73",
+    "0x63a72806098Bd3D9520cC43356dD78afe5D386D9"
+  ],
+  "primeTokens": []
+}

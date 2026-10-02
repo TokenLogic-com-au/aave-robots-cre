@@ -1,4 +1,6 @@
 import {describe, expect} from 'bun:test';
+import {readdirSync, readFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {addContractMock, EvmMock, test} from '@chainlink/cre-sdk/test';
 import {getNetwork, TxStatus} from '@chainlink/cre-sdk';
 import {
@@ -351,4 +353,40 @@ describe('onCronTrigger migrations', () => {
       'No calls to execute',
     );
   });
+});
+
+describe('per-chain configs', () => {
+  const dir = import.meta.dir;
+  const workflowYaml = readFileSync(join(dir, 'workflow.yaml'), 'utf8');
+  const projectYaml = readFileSync(join(dir, '../../project.yaml'), 'utf8');
+  const chains = readdirSync(dir)
+    .filter((f) => /^config\.[a-z]+\.json$/.test(f))
+    .map((f) => f.split('.')[1]);
+
+  test('covers the six supported chains', () => {
+    expect(chains.sort()).toEqual([
+      'arbitrum',
+      'avalanche',
+      'base',
+      'ethereum',
+      'optimism',
+      'polygon',
+    ]);
+  });
+
+  for (const chain of chains) {
+    test(`config.${chain}.json parses, is a known CRE chain and has both targets`, () => {
+      const config = configSchema.parse(
+        JSON.parse(readFileSync(join(dir, `config.${chain}.json`), 'utf8')),
+      );
+      const target = `aave-depositor-${chain}-production-settings`;
+      expect(
+        getNetwork({chainFamily: 'evm', chainSelectorName: config.chainName, isTestnet: false}),
+      ).toBeDefined();
+      expect(workflowYaml).toContain(`${target}:`);
+      expect(workflowYaml).toContain(`config-path: "./config.${chain}.json"`);
+      expect(projectYaml).toContain(`${target}:`);
+      expect(projectYaml).toContain(`chain-name: ${config.chainName}`);
+    });
+  }
 });
