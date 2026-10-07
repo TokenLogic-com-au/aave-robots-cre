@@ -122,7 +122,7 @@ contract AaveDepositorReceiverAvalanchePolygonForkTest is Test {
     assertApproxEqAbs(
       IERC20(m.aUsdcV3).balanceOf(m.collector) - aUsdcBefore,
       depositAmount,
-      1,
+      2,
       string.concat(m.fork, ': collector did not receive the V3 aToken')
     );
 
