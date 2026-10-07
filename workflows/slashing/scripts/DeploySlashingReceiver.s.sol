@@ -14,12 +14,14 @@ contract DeploySlashingReceiver is Script {
     address umbrella = address(UmbrellaEthereum.UMBRELLA);
     address owner = GovernanceV3Ethereum.EXECUTOR_LVL_1;
     address guardian = GovernanceV3Ethereum.GOVERNANCE_GUARDIAN;
-    require(umbrella != address(0), 'invalid umbrella');
+    require(umbrella.code.length > 0, 'umbrella not deployed on this chain');
     require(owner != address(0), 'invalid owner');
     require(guardian != address(0), 'invalid guardian');
+
     vm.startBroadcast();
     SlashingReceiver receiver = new SlashingReceiver(umbrella, owner, guardian);
     vm.stopBroadcast();
+
     console.log('SlashingReceiver deployed at:', address(receiver));
     console.log('Umbrella:', umbrella);
     console.log('Owner:', owner);
