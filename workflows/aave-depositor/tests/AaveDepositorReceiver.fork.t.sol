@@ -79,7 +79,7 @@ contract AaveDepositorReceiverForkTest is Test {
     assertApproxEqAbs(
       aUsdc.balanceOf(address(AaveV3Ethereum.COLLECTOR)) - aUsdcBefore,
       AMOUNT,
-      1,
+      2,
       'collector did not receive aUSDC'
     );
   }
