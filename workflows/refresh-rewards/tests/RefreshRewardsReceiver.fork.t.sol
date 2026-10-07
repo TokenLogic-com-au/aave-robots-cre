@@ -43,14 +43,26 @@ contract RefreshRewardsReceiverForkTest is Test {
   }
 
   function test_fork_checkUpkeep_picksTokensFlaggedByNeedsRefresh() public view {
-    (bool needed, bytes memory performData) = robot.checkUpkeep(abi.encode(factory));
-    if (!needed) return;
+    address[] memory stataTokens = factory.getStataTokens();
+    uint256 flagged;
+    for (uint256 i = 0; i < stataTokens.length; i++) {
+      if (robot.needsRefresh(stataTokens[i])) flagged++;
+    }
 
-    (, address[] memory tokens) = abi.decode(performData, (address, address[]));
-    assertGt(tokens.length, 0, 'upkeep needed without stataTokens');
-    assertLe(tokens.length, robot.MAX_ACTIONS(), 'more stataTokens than MAX_ACTIONS');
-    for (uint256 i = 0; i < tokens.length; i++) {
-      assertTrue(robot.needsRefresh(tokens[i]), 'picked a stataToken that needs no refresh');
+    (bool needed, bytes memory performData) = robot.checkUpkeep(abi.encode(factory));
+    assertEq(needed, flagged > 0, 'checkUpkeep disagrees with needsRefresh');
+
+    if (needed) {
+      (, address[] memory tokens) = abi.decode(performData, (address, address[]));
+      uint256 maxActions = robot.MAX_ACTIONS();
+      assertEq(
+        tokens.length,
+        flagged < maxActions ? flagged : maxActions,
+        'unexpected number of picked stataTokens'
+      );
+      for (uint256 i = 0; i < tokens.length; i++) {
+        assertTrue(robot.needsRefresh(tokens[i]), 'picked a stataToken that needs no refresh');
+      }
     }
   }
 
