@@ -26,6 +26,8 @@ base = "${RPC_BASE}"
 gnosis = "${RPC_GNOSIS}"
 bnb = "${RPC_BNB}"
 scroll = "${RPC_SCROLL}"
+plasma = "${RPC_PLASMA}"
+monad = "${RPC_MONAD}"
 
 [etherscan]
 mainnet = { key = "${ETHERSCAN_API_KEY}", chain = 1 }

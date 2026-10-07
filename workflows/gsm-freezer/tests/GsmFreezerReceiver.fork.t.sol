@@ -14,6 +14,7 @@ import {IPoolAddressesProvider} from 'aave-v3-origin/contracts/interfaces/IPoolA
 import {IPriceOracleGetter} from 'aave-v3-origin/contracts/interfaces/IPriceOracleGetter.sol';
 
 import {IGsmFreezerReceiver, IGsm} from '../src/IGsmFreezerReceiver.sol';
+import {DeployGsmFreezerReceiver} from '../scripts/DeployGsmFreezerReceiver.s.sol';
 
 contract GsmFreezerReceiverForkTest is Test {
   address internal constant GSM = GhoEthereum.GSM_USDC;
@@ -103,5 +104,58 @@ contract GsmFreezerReceiverForkTest is Test {
       abi.encodeCall(IPriceOracleGetter.getAssetPrice, (UNDERLYING)),
       abi.encode(price)
     );
+  }
+}
+
+contract GsmFreezerDeployScriptForkTest is Test {
+  address internal anyone = makeAddr('anyone');
+
+  function test_fork_ethereum_deployScriptFreezesEveryGsm() public {
+    _deployAndFreeze('mainnet');
+  }
+
+  function test_fork_plasma_deployScriptFreezesEveryGsm() public {
+    vm.skip(!vm.envExists('RPC_PLASMA'), 'RPC_PLASMA not set');
+    _deployAndFreeze('plasma');
+  }
+
+  function test_fork_monad_deployScriptFreezesEveryGsm() public {
+    vm.skip(!vm.envExists('RPC_MONAD'), 'RPC_MONAD not set');
+    _deployAndFreeze('monad');
+  }
+
+  /// Runs the deploy script on `chain`, grants each receiver the freezer role as governance
+  /// would, and checks a depeg freezes the live GSM.
+  function _deployAndFreeze(string memory chain) internal {
+    vm.createSelectFork(chain);
+    DeployGsmFreezerReceiver script = new DeployGsmFreezerReceiver();
+    DeployGsmFreezerReceiver.DeployConfig memory config = script.getDeployConfig(block.chainid);
+    address[] memory receivers = script.run();
+    assertEq(receivers.length, config.freezers.length, 'one receiver per GSM');
+
+    address oracle = IPoolAddressesProvider(config.addressesProvider).getPriceOracle();
+    for (uint256 i = 0; i < receivers.length; i++) {
+      GsmFreezerReceiver receiver = GsmFreezerReceiver(receivers[i]);
+      IGsm gsm = IGsm(config.freezers[i].gsm);
+      assertEq(address(receiver.GSM()), address(gsm), 'receiver points to another GSM');
+      assertEq(receiver.owner(), config.owner, 'unexpected owner');
+      assertFalse(gsm.getIsSeized(), 'gsm is seized');
+      assertFalse(gsm.getIsFrozen(), 'gsm already frozen on the fork');
+
+      bytes32 role = gsm.SWAP_FREEZER_ROLE();
+      vm.prank(config.owner);
+      IAccessControl(address(gsm)).grantRole(role, address(receiver));
+      (bool needed, ) = receiver.checkUpkeep('');
+      assertFalse(needed, 'upkeep needed at peg');
+
+      vm.mockCall(
+        oracle,
+        abi.encodeCall(IPriceOracleGetter.getAssetPrice, (config.freezers[i].underlying)),
+        abi.encode(0.90e8)
+      );
+      vm.prank(anyone);
+      receiver.onReport('', '');
+      assertTrue(gsm.getIsFrozen(), 'gsm not frozen');
+    }
   }
 }
