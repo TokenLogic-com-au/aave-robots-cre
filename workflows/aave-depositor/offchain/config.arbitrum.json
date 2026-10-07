@@ -1,0 +1,19 @@
+{
+  "$comment": "Addresses from https://github.com/bgd-labs/aave-address-book/blob/main/src/AaveV3Arbitrum.sol; ignoredTokens = GHO and AAVE. USD amounts have 8 decimals.",
+  "schedule": "0 0 12 */14 * *",
+  "chainName": "ethereum-mainnet-arbitrum-1",
+  "isTestnet": false,
+  "receiver": "",
+  "dataProviderV3": "0x243Aa95cAC2a25651eda86e80bEe66114413c43b",
+  "collector": "0x053D55f9B5AF8694c503EB288a1B7E552f590710",
+  "priceOracle": "0xb56c2F0B653B2e0b10C9b928C8580Ac5Df02C7C7",
+  "corePoolV3": "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+  "depositMinUsd": "100000000000",
+  "migrationMinUsd": "500000000000",
+  "migrationBps": "9000",
+  "ignoredTokens": [
+    "0x7dfF72693f6A4149b17e7C6314655f6A9F7c8B33",
+    "0xba5DdD1f9d7F570dc94a51479a000E3BCE967196"
+  ],
+  "primeTokens": []
+}
