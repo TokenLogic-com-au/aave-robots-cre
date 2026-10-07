@@ -1,4 +1,5 @@
 {
+  "$comment": "One entry per GSM receiver, in order: Ethereum GSM_USDC, Ethereum GSM_USDT, Plasma GSM_USDT, Monad GSM_USDC. GSM addresses: https://github.com/bgd-labs/aave-address-book/blob/main/src/GhoEthereum.sol, GhoPlasma.sol, GhoMonad.sol.",
   "schedule": "*/30 * * * * *",
   "evms": [
     {
@@ -8,6 +9,16 @@
     },
     {
       "chainName": "ethereum-mainnet",
+      "isTestnet": false,
+      "receiver": ""
+    },
+    {
+      "chainName": "plasma-mainnet",
+      "isTestnet": false,
+      "receiver": ""
+    },
+    {
+      "chainName": "monad-mainnet",
       "isTestnet": false,
       "receiver": ""
     }

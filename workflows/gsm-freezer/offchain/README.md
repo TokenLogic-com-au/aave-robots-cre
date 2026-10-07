@@ -4,7 +4,7 @@ Off-chain CRE workflow driving [`GsmFreezerReceiver`](../src/GsmFreezerReceiver.
 Every 30 seconds (the CRE cron minimum) it calls each receiver's `checkUpkeep` with
 empty `checkData`; when a freeze or unfreeze applies it signs the returned `performData`
 and writes it back as the receiver's `onReport`. One trigger per GSM receiver
-(Ethereum: USDC and USDT).
+(Ethereum USDC and USDT, Plasma USDT, Monad USDC).
 
 ## Config
 
