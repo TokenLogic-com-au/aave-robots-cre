@@ -1,7 +1,7 @@
 -include .env
 
 update :; forge update
-install :; forge install && npm install && npm --prefix workflows/shared/offchain install && npm --prefix workflows/fee-shares-minter/offchain install
+install :; forge install && npm install && npm --prefix workflows/shared/offchain install && npm --prefix workflows/fee-shares-minter/offchain install && npm --prefix workflows/refresh-rewards/offchain install
 
 build :; forge build --sizes
 test :; forge test -vvv --ffi
@@ -14,15 +14,25 @@ generate-abis :; npm run generate-abis
 typecheck-fee-shares-minter :; cd workflows/fee-shares-minter/offchain && npm run typecheck
 test-offchain-fee-shares-minter :; cd workflows/fee-shares-minter/offchain && npm test
 
+typecheck-refresh-rewards :; cd workflows/refresh-rewards/offchain && npm run typecheck
+test-offchain-refresh-rewards :; cd workflows/refresh-rewards/offchain && npm test
+
 # `cast wallet import <name>` first, then set ACCOUNT_NAME in .env.
 deploy-account :; forge script ${contract} --rpc-url ${chain} --account ${ACCOUNT_NAME} -vvvv --slow $(if ${dry},,--verify ${verifier} --broadcast)
 
 DEPLOY_CHAIN_Mainnet := mainnet
 DEPLOY_CHAIN_Devnet := tenderly_devnet
+DEPLOY_CHAIN_Avalanche := avalanche
+DEPLOY_CHAIN_Optimism := optimism
+DEPLOY_CHAIN_Arbitrum := arbitrum
+DEPLOY_CHAIN_Base := base
 
 # Tenderly virtual testnets verify against <rpc-url>/verify with a custom verifier;
 # mainnet uses the default Etherscan verifier (foundry.toml [etherscan] + ETHERSCAN_API_KEY).
 DEPLOY_VERIFIER_Devnet := --verifier custom --verifier-url $(RPC_TENDERLY_DEVNET)/verify
 
-deploy-fee-shares-minter :; @[ -n "$(DEPLOY_CHAIN_${env})" ] || { echo "ERROR: pass 'env=Mainnet' or 'env=Devnet'"; exit 1; }; \
+deploy-fee-shares-minter :; @case "${env}" in Mainnet|Devnet) ;; *) echo "ERROR: pass 'env=Mainnet' or 'env=Devnet'"; exit 1;; esac; \
 	make deploy-account contract=workflows/fee-shares-minter/scripts/DeployFeeSharesMinter.s.sol:DeployFeeSharesMinter chain=$(DEPLOY_CHAIN_${env}) verifier="$(DEPLOY_VERIFIER_${env})" dry=${dry}
+
+deploy-refresh-rewards :; @case "${env}" in Mainnet|Avalanche|Optimism|Arbitrum|Base) ;; *) echo "ERROR: pass 'env=' one of Mainnet, Avalanche, Optimism, Arbitrum, Base"; exit 1;; esac; \
+	make deploy-account contract=workflows/refresh-rewards/scripts/DeployRefreshRewardsReceiver.s.sol:DeployRefreshRewardsReceiver chain=$(DEPLOY_CHAIN_${env}) verifier="$(DEPLOY_VERIFIER_${env})" dry=${dry}

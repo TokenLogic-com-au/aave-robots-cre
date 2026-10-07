@@ -1,0 +1,38 @@
+{
+  "schedule": "0 11 * * *",
+  "evms": [
+    {
+      "chainName": "ethereum-mainnet",
+      "isTestnet": false,
+      "receiver": "",
+      "factories": [
+        "0xCb0b5cA20b6C5C02A9A3B2cE433650768eD2974F",
+        "0x347C75d19718a05148687E13dca259aD016aB411"
+      ]
+    },
+    {
+      "chainName": "avalanche-mainnet",
+      "isTestnet": false,
+      "receiver": "",
+      "factories": ["0xC2E7A608d868817dd58438913Ed72955a0567561"]
+    },
+    {
+      "chainName": "ethereum-mainnet-optimism-1",
+      "isTestnet": false,
+      "receiver": "",
+      "factories": ["0x170d6D6FCAbF0Ba3932a03d5f470c16c39c18e39"]
+    },
+    {
+      "chainName": "ethereum-mainnet-arbitrum-1",
+      "isTestnet": false,
+      "receiver": "",
+      "factories": ["0xd85922fFF51ba4130cEC7c499db4Ac3Eb9981EaD"]
+    },
+    {
+      "chainName": "ethereum-mainnet-base-1",
+      "isTestnet": false,
+      "receiver": "",
+      "factories": ["0x78d33BF0014ab169725F2Ea5a62b200F2977faeE"]
+    }
+  ]
+}
