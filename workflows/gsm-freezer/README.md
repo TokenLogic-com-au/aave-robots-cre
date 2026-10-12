@@ -62,7 +62,7 @@ band needs `disableAutomation()` to stick.
 # from repo root
 forge test --match-path 'workflows/gsm-freezer/tests/*.t.sol' --no-match-contract 'Fork' -vvv   # unit
 forge test --match-contract 'GsmFreezer.*Fork' -vvv                                             # fork; needs RPC_MAINNET (+ RPC_PLASMA)
-forge test --match-test 'test_fork_monad' --network monad -vvv                                   # Monad fork; needs RPC_MONAD
+FORK_MONAD=true forge test --match-test 'test_fork_monad' --network monad -vvv                   # Monad fork; needs RPC_MONAD
 cd workflows/gsm-freezer/offchain && bun test                                                    # CRE workflow (bun)
 ```
 
@@ -70,8 +70,9 @@ The fork suite runs against the live
 [`GhoEthereum.GSM_USDC`](https://etherscan.io/address/0x3A3868898305f04beC7FEa77BecFf04C13444112):
 it grants `SWAP_FREEZER_ROLE` as governance would, mocks a depeg in the Aave oracle and
 checks the robot freezes and then unfreezes the real GSM. `GsmFreezerDeployScriptForkTest`
-runs the deploy script on each chain and freezes every GSM it covers; the Plasma and Monad
-cases are skipped without their RPC, and Monad needs `--network monad`.
+runs the deploy script on each chain and freezes every GSM it covers. The Plasma case is
+skipped without `RPC_PLASMA`; the Monad case only runs with `FORK_MONAD=true` and
+`--network monad`.
 
 `workflow.test.ts` runs `createReceiverHandler` against a mocked cre-sdk EVM client
 (`EvmMock`) for each branch. Requires `bun` on PATH.
