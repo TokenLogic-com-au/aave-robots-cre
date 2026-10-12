@@ -119,8 +119,9 @@ contract GsmFreezerDeployScriptForkTest is Test {
     _deployAndFreeze('plasma');
   }
 
+  /// Forking Monad needs forge's Monad EVM, which only `--network monad` selects.
   function test_fork_monad_deployScriptFreezesEveryGsm() public {
-    vm.skip(!vm.envExists('RPC_MONAD'), 'RPC_MONAD not set');
+    vm.skip(!vm.envOr('FORK_MONAD', false), 'set FORK_MONAD=true and run with --network monad');
     _deployAndFreeze('monad');
   }
 
