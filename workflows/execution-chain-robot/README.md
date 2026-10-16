@@ -100,7 +100,9 @@ On every chain, the fork suite runs the deploy script, creates a payload on the 
 proposal from Ethereum governance, and checks the robot only picks it once its delay has
 passed and executes it. It also checks the receiver agrees with BGD's live keeper (same
 `PayloadsController`, same `upkeepNeeded`, BGD's pick among the receiver's ids), the
-Ethereum gas cap against BGD's, and that an expired payload is skipped.
+Ethereum gas cap against BGD's, and that an expired payload is skipped. On Ethereum, the
+harness's `canPayloadBeExecuted` is checked against the live `executePayload` at each
+timelock and expiry boundary.
 
 `workflow.test.ts` runs `createReceiverHandler` against a mocked cre-sdk EVM client
 (`EvmMock`) for each branch. Requires `bun` on PATH.
