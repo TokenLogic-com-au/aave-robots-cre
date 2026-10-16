@@ -1,0 +1,10 @@
+# ==========================================================================
+# CRE WORKFLOW SETTINGS — ExecutionChainRobot
+# ==========================================================================
+execution-chain-robot-production-settings:
+  user-workflow:
+    workflow-name: "execution-chain-robot-production"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.production.json"
+    secrets-path: ""
