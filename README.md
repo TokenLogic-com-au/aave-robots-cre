@@ -6,9 +6,10 @@ This repo is the long-term home for **all** Aave CRE automations. Each robot liv
 
 ## Robots
 
-| Robot           | Folder                                                       | What it does                                                                       |
-| --------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| FeeSharesMinter | [`workflows/fee-shares-minter`](workflows/fee-shares-minter) | Mints accrued fee shares on Aave v4 hubs once a configurable threshold is crossed. |
+| Robot                | Folder                                                                 | What it does                                                                       |
+| -------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| FeeSharesMinter      | [`workflows/fee-shares-minter`](workflows/fee-shares-minter)           | Mints accrued fee shares on Aave v4 hubs once a configurable threshold is crossed. |
+| GovernanceChainRobot | [`workflows/governance-chain-robot`](workflows/governance-chain-robot) | Activates voting, executes and cancels Aave Governance V3 proposals on Ethereum.   |
 
 See each robot's README for the contract design, test instructions, deploy flow and CRE workflow config.
 
