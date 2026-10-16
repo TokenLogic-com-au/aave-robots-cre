@@ -6,9 +6,10 @@ This repo is the long-term home for **all** Aave CRE automations. Each robot liv
 
 ## Robots
 
-| Robot           | Folder                                                       | What it does                                                                       |
-| --------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| FeeSharesMinter | [`workflows/fee-shares-minter`](workflows/fee-shares-minter) | Mints accrued fee shares on Aave v4 hubs once a configurable threshold is crossed. |
+| Robot           | Folder                                                       | What it does                                                                                |
+| --------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| FeeSharesMinter | [`workflows/fee-shares-minter`](workflows/fee-shares-minter) | Mints accrued fee shares on Aave v4 hubs once a configurable threshold is crossed.          |
+| CapAgent        | [`workflows/cap-agent`](workflows/cap-agent)                 | Injects Risk Oracle updates (supply/borrow caps, rate strategies) through Aave's AgentHubs. |
 
 See each robot's README for the contract design, test instructions, deploy flow and CRE workflow config.
 
