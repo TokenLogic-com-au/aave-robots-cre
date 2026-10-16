@@ -6,7 +6,7 @@
       "mailboxAddress": "0x0FC9eB644dF453B53C7d9A6892c878f14382ddc3",
       "automations": [
         {
-          "address": "0x249396a890F89D47F89326d7EE116b1d374fb3A9",
+          "address": "0x249396a890F89D47F89326d7EE116b1d374Fb3A9",
           "checkData": "0x",
           "name": "Execution Chain Robot"
         },

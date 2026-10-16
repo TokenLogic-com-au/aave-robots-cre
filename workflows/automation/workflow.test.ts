@@ -3,7 +3,9 @@ import {TxStatus, getNetwork} from '@chainlink/cre-sdk';
 import {EvmMock, newTestRuntime, test} from '@chainlink/cre-sdk/test';
 import {encodeAbiParameters, hexToBytes, parseAbiParameters, type Hex} from 'viem';
 
+import {MAX_WRITE_GAS_LIMIT} from './gas';
 import {createAutomationHandler, createHandlers} from './handlers';
+import {configSchema} from './types';
 
 const CHAIN_NAME = 'ethereum-mainnet';
 const CHAIN_SELECTOR = getNetwork({
@@ -73,6 +75,22 @@ describe('automation handler', () => {
     expect(handle(runtime as never)).toBe(TX_HASH);
   });
 
+  test('skips the write when the estimate exceeds the max write gas', () => {
+    const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
+    evmMock.callContract = () => ({data: checkUpkeepResult(true, PERFORM_DATA)});
+    evmMock.estimateGas = () => ({gas: MAX_WRITE_GAS_LIMIT + 1n});
+    let written = false;
+    evmMock.writeReport = () => {
+      written = true;
+      return {txStatus: TxStatus.SUCCESS, txHash: hexToBytes(TX_HASH)};
+    };
+
+    const runtime = newTestRuntime();
+    expect(handle(runtime as never)).toBe('No upkeep needed');
+    expect(written).toBe(false);
+    expect(runtime.getLogs().find((l) => l.includes('exceeds max write gas'))).toBeDefined();
+  });
+
   test('skips and logs when writeReport status is not SUCCESS', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     evmMock.callContract = () => ({data: checkUpkeepResult(true, PERFORM_DATA)});
@@ -112,5 +130,24 @@ describe('createHandlers', () => {
   test('skips automations with empty address', () => {
     const handlers = createHandlers(network([{address: '', checkData: '0x'}]));
     expect(handlers.length).toBe(0);
+  });
+
+  test('normalizes wrong-case config addresses so the write path can encode them', () => {
+    // The Polygon robot shipped with this wrong-case checksum: checkUpkeep passed
+    // but encodeAbiParameters rejected it, so the chain never got a write.
+    const badCase = '0x249396a890F89D47F89326d7EE116b1d374fb3A9';
+    const config = configSchema.parse(network([{address: badCase, checkData: '0x'}]));
+    const address = config.evms[0].automations[0].address;
+    expect(address).toBe('0x249396a890F89D47F89326d7EE116b1d374Fb3A9');
+
+    const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
+    evmMock.callContract = () => ({data: checkUpkeepResult(true, PERFORM_DATA)});
+    evmMock.estimateGas = () => ({gas: 100_000n});
+    evmMock.writeReport = () => ({txStatus: TxStatus.SUCCESS, txHash: hexToBytes(TX_HASH)});
+
+    const raw = createAutomationHandler(CHAIN_NAME, MAILBOX, badCase, '0x');
+    expect(raw(newTestRuntime() as never)).toBe('Processing failed');
+    const parsed = createAutomationHandler(CHAIN_NAME, MAILBOX, address, '0x');
+    expect(parsed(newTestRuntime() as never)).toBe(TX_HASH);
   });
 });

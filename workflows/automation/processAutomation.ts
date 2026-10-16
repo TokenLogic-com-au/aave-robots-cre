@@ -16,6 +16,7 @@ import {
 } from 'viem';
 import {ICLAutomation} from '../contracts/abi/ICLAutomation';
 import {IMailboxCRE} from '../contracts/abi/IMailboxCRE';
+import {MAX_WRITE_GAS_LIMIT} from './gas';
 import {type Config} from './types';
 
 export const processAutomation = (
@@ -72,8 +73,9 @@ export const processAutomation = (
     args: ['0x', mailboxReportData],
   });
 
+  let estimate: bigint;
   try {
-    const estimateGasResult = evmClient
+    estimate = evmClient
       .estimateGas(runtime, {
         msg: encodeCallMsg({
           from: zeroAddress,
@@ -81,12 +83,21 @@ export const processAutomation = (
           data: onReportCalldata,
         }),
       })
-      .result();
+      .result().gas;
     runtime.log(
-      `[${chainName}] [${robot}] estimate gas (performUpkeep via onReport): ${estimateGasResult.gas.toString()}`,
+      `[${chainName}] [${robot}] estimate gas (performUpkeep via onReport): ${estimate.toString()}`,
     );
   } catch (e) {
     runtime.log(`[${chainName}] [${robot}] estimate gas failed (performUpkeep via onReport): ${e}`);
+    return null;
+  }
+
+  // Sending anyway would burn the gas and still fail inside the forwarder;
+  // leave anything this large to the backup keeper.
+  if (estimate > MAX_WRITE_GAS_LIMIT) {
+    runtime.log(
+      `[${chainName}] [${robot}] estimate ${estimate} exceeds max write gas ${MAX_WRITE_GAS_LIMIT} - skipping`,
+    );
     return null;
   }
 

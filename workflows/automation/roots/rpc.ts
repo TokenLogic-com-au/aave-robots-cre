@@ -45,10 +45,10 @@ export function getBlockByHash(
   rpcUrl: string,
   blockHash: Hex,
 ): Record<string, string> {
-  return jsonRpcCall(confClient, runtime, rpcUrl, 'eth_getBlockByHash', [blockHash, false]) as Record<
-    string,
-    string
-  >;
+  return jsonRpcCall(confClient, runtime, rpcUrl, 'eth_getBlockByHash', [
+    blockHash,
+    false,
+  ]) as Record<string, string>;
 }
 
 export type EthGetProofResult = {

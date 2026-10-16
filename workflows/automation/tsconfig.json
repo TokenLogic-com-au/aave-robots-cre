@@ -10,5 +10,13 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["main.ts", "handlers.ts", "processAutomation.ts", "types.ts", "roots/**/*.ts"]
+  "include": [
+    "main.ts",
+    "handlers.ts",
+    "processAutomation.ts",
+    "address.ts",
+    "gas.ts",
+    "types.ts",
+    "roots/**/*.ts"
+  ]
 }

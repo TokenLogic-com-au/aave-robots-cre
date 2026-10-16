@@ -15,6 +15,7 @@ import {
   zeroAddress,
   type Hex,
 } from 'viem';
+import {MAX_WRITE_GAS_LIMIT} from '../gas';
 import {type Config} from '../types';
 import {type RootsConfig, type VotingNetworkConfig} from './types';
 import {IGovernanceCore} from '../../contracts/abi/IGovernanceCore';
@@ -100,6 +101,12 @@ function sendViaMailbox(
     .result();
   runtime.log(`[${chainName}] Gas estimate for ${label}: ${gasEstimate.gas.toString()}`);
 
+  if (gasEstimate.gas > MAX_WRITE_GAS_LIMIT) {
+    throw new Error(
+      `[${chainName}] gas estimate ${gasEstimate.gas} for ${label} exceeds max write gas ${MAX_WRITE_GAS_LIMIT}`,
+    );
+  }
+
   const reportResponse = runtime.report(prepareReportRequest(mailboxReportData)).result();
   const writeResult = votingEvmClient
     .writeReport(runtime, {receiver: mailboxAddress, report: reportResponse})
@@ -152,7 +159,11 @@ export function processStorageRoots(
   const accounts = [
     {label: 'AAVE', address: roots.tokens.aave as Hex, storageKeys: [] as Hex[]},
     {label: 'aAAVE', address: roots.tokens.aAave as Hex, storageKeys: [] as Hex[]},
-    {label: 'stkAAVE', address: roots.tokens.stkAave as Hex, storageKeys: [STK_AAVE_EXCHANGE_RATE_SLOT]},
+    {
+      label: 'stkAAVE',
+      address: roots.tokens.stkAave as Hex,
+      storageKeys: [STK_AAVE_EXCHANGE_RATE_SLOT],
+    },
     {label: 'Governance', address: roots.governanceAddress as Hex, storageKeys: [] as Hex[]},
   ];
 
@@ -160,13 +171,25 @@ export function processStorageRoots(
   let stkStorageProof: Hex[] | undefined;
 
   for (const account of accounts) {
-    const proof = getProof(confClient, runtime, ethRpcUrl, account.address, account.storageKeys, blockNumber);
+    const proof = getProof(
+      confClient,
+      runtime,
+      ethRpcUrl,
+      account.address,
+      account.storageKeys,
+      blockNumber,
+    );
     submissions.push({
       label: `processStorageRoot(${account.label})`,
       calldata: encodeFunctionData({
         abi: IDataWarehouse,
         functionName: 'processStorageRoot',
-        args: [account.address, snapshotBlockHash, blockHeaderRLP, formatToProofRLP(proof.accountProof)],
+        args: [
+          account.address,
+          snapshotBlockHash,
+          blockHeaderRLP,
+          formatToProofRLP(proof.accountProof),
+        ],
       }),
     });
     if (account.storageKeys.length > 0) stkStorageProof = proof.storageProof[0].proof;
@@ -178,7 +201,12 @@ export function processStorageRoots(
     calldata: encodeFunctionData({
       abi: IDataWarehouse,
       functionName: 'processStorageSlot',
-      args: [roots.tokens.stkAave as Hex, snapshotBlockHash, STK_AAVE_EXCHANGE_RATE_SLOT, formatToProofRLP(stkStorageProof)],
+      args: [
+        roots.tokens.stkAave as Hex,
+        snapshotBlockHash,
+        STK_AAVE_EXCHANGE_RATE_SLOT,
+        formatToProofRLP(stkStorageProof),
+      ],
     }),
   });
   runtime.log('All proofs fetched and formatted');

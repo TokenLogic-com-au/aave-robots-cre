@@ -1,8 +1,9 @@
 import {z} from 'zod';
+import {addressSchema} from './address';
 import {rootsConfigSchema} from './roots/types';
 
 export const automationSchema = z.object({
-  address: z.string(),
+  address: addressSchema,
   checkData: z.string(),
   name: z.string().optional(),
 });
@@ -10,7 +11,7 @@ export type AutomationConfig = z.infer<typeof automationSchema>;
 
 export const networkSchema = z.object({
   chainName: z.string(),
-  mailboxAddress: z.string(),
+  mailboxAddress: addressSchema,
   automations: z.array(automationSchema),
 });
 export type NetworkConfig = z.infer<typeof networkSchema>;
