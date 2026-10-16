@@ -1,0 +1,20 @@
+{
+  "schedule": "0 */5 * * * *",
+  "evms": [
+    {
+      "chainName": "ethereum-mainnet",
+      "isTestnet": false,
+      "receiver": ""
+    },
+    {
+      "chainName": "avalanche-mainnet",
+      "isTestnet": false,
+      "receiver": ""
+    },
+    {
+      "chainName": "polygon-mainnet",
+      "isTestnet": false,
+      "receiver": ""
+    }
+  ]
+}
