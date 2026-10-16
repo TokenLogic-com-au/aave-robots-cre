@@ -21,6 +21,7 @@ import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
 import {ExecutionChainRobotReceiver} from '../src/ExecutionChainRobotReceiver.sol';
 import {IExecutionChainRobotReceiver} from '../src/IExecutionChainRobotReceiver.sol';
 import {DeployExecutionChainRobotReceiver} from '../scripts/DeployExecutionChainRobotReceiver.s.sol';
+import {ExecutionChainRobotReceiverHarness} from './helpers/ExecutionChainRobotReceiverHarness.sol';
 
 /// @dev Delegatecalled by the executor, so the event is emitted by the executor.
 contract NoopPayload {
@@ -126,6 +127,51 @@ contract ExecutionChainRobotReceiverForkTest is Test {
     vm.prank(anyone);
     vm.expectRevert(IExecutionChainRobotReceiver.NoActionCanBePerformed.selector);
     receiver.onReport('', abi.encode(_ids(payloadId)));
+  }
+
+  /// The ported executability check agrees with the live `executePayload` around every
+  /// boundary: right after queueing, at and after the end of the timelock, and around expiry.
+  /// Only `executionTime + 1` and `expiry - 1` are executable.
+  function test_fork_ethereum_canPayloadBeExecutedMatchesExecutePayload() public {
+    vm.createSelectFork('mainnet');
+    IPayloadsControllerCore controller = GovernanceV3Ethereum.PAYLOADS_CONTROLLER;
+    ExecutionChainRobotReceiverHarness harness = new ExecutionChainRobotReceiverHarness(
+      address(controller),
+      address(0),
+      0,
+      makeAddr('owner'),
+      makeAddr('guardian')
+    );
+
+    uint40 payloadId = _createAndQueuePayload(controller);
+    IPayloadsControllerCore.Payload memory payload = controller.getPayloadById(payloadId);
+    uint256 executionTime = uint256(payload.queuedAt) + payload.delay;
+    uint256 expiry = executionTime + payload.gracePeriod;
+
+    uint256[6] memory timestamps = [
+      block.timestamp,
+      executionTime - 1,
+      executionTime,
+      executionTime + 1,
+      expiry - 1,
+      expiry
+    ];
+    uint256 executable = 0;
+    for (uint256 i = 0; i < timestamps.length; i++) {
+      vm.warp(timestamps[i]);
+      uint256 snapshot = vm.snapshotState();
+      (bool executes, ) = address(controller).call(
+        abi.encodeCall(IPayloadsControllerCore.executePayload, (payloadId))
+      );
+      vm.revertToState(snapshot);
+      if (executes) executable++;
+      assertEq(
+        harness.canPayloadBeExecuted(payloadId),
+        executes,
+        string.concat('mismatch at timestamp index ', vm.toString(i))
+      );
+    }
+    assertEq(executable, 2, 'unexpected number of executable timestamps');
   }
 
   function _executesQueuedPayload(string memory chain, address bgdKeeper) internal {
