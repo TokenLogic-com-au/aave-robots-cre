@@ -1,0 +1,502 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import {Test, Vm} from 'forge-std/Test.sol';
+
+import {Ownable} from 'openzeppelin-contracts/contracts/access/Ownable.sol';
+import {IWithGuardian} from 'solidity-utils/contracts/access-control/interfaces/IWithGuardian.sol';
+import {IERC165} from 'openzeppelin-contracts/contracts/utils/introspection/IERC165.sol';
+import {IRescuable} from 'aave-v4/interfaces/IRescuable.sol';
+import {AggregatorInterface} from 'aave-v3-origin/contracts/dependencies/chainlink/AggregatorInterface.sol';
+import {IPayloadsControllerCore} from 'aave-address-book/governance-v3/IPayloadsControllerCore.sol';
+
+import {IReceiver} from 'aave-cre/IReceiver.sol';
+import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
+
+import {ExecutionChainRobotReceiver} from '../src/ExecutionChainRobotReceiver.sol';
+import {IExecutionChainRobotReceiver} from '../src/IExecutionChainRobotReceiver.sol';
+
+contract ExecutionChainRobotReceiverTest is Test {
+  uint40 internal constant NOW = 1_800_000_000;
+  uint40 internal constant DELAY = 1 days;
+  uint40 internal constant GRACE_PERIOD = 7 days;
+  uint256 internal constant MAX_GAS_PRICE = 150 gwei;
+
+  ExecutionChainRobotReceiver internal robot;
+  ExecutionChainRobotReceiver internal cappedRobot;
+
+  address internal owner;
+  address internal guardian;
+  address internal bob;
+  address internal anyone;
+  address internal controller;
+  address internal oracle;
+
+  function setUp() public {
+    owner = makeAddr('owner');
+    guardian = makeAddr('guardian');
+    bob = makeAddr('bob');
+    anyone = makeAddr('anyone');
+    controller = makeAddr('payloadsController');
+    oracle = makeAddr('gasPriceOracle');
+
+    vm.warp(NOW);
+    robot = new ExecutionChainRobotReceiver(controller, address(0), 0, owner, guardian);
+    cappedRobot = new ExecutionChainRobotReceiver(
+      controller,
+      oracle,
+      MAX_GAS_PRICE,
+      owner,
+      guardian
+    );
+    _mockGasPrice(1 gwei);
+  }
+
+  function test_constructor_setsState() public view {
+    assertEq(robot.owner(), owner, 'owner mismatch');
+    assertEq(robot.guardian(), guardian, 'guardian mismatch');
+    assertEq(address(robot.PAYLOADS_CONTROLLER()), controller, 'controller mismatch');
+    assertEq(robot.GAS_PRICE_ORACLE(), address(0), 'uncapped robot has an oracle');
+    assertEq(robot.getMaxGasPrice(), 0, 'uncapped robot has a cap');
+    assertEq(cappedRobot.GAS_PRICE_ORACLE(), oracle, 'oracle mismatch');
+    assertEq(cappedRobot.getMaxGasPrice(), MAX_GAS_PRICE, 'max gas price mismatch');
+  }
+
+  function test_constructor_emitsMaxGasPriceSet_whenCapped() public {
+    vm.expectEmit();
+    emit IExecutionChainRobotReceiver.MaxGasPriceSet(MAX_GAS_PRICE);
+    new ExecutionChainRobotReceiver(controller, oracle, MAX_GAS_PRICE, owner, guardian);
+  }
+
+  function test_constructor_revertsWith_InvalidPayloadsController() public {
+    vm.expectRevert(IExecutionChainRobotReceiver.InvalidPayloadsController.selector);
+    new ExecutionChainRobotReceiver(address(0), address(0), 0, owner, guardian);
+  }
+
+  function test_constructor_revertsWith_GasPriceCapNotSupported_whenCapWithoutOracle() public {
+    vm.expectRevert(IExecutionChainRobotReceiver.GasPriceCapNotSupported.selector);
+    new ExecutionChainRobotReceiver(controller, address(0), MAX_GAS_PRICE, owner, guardian);
+  }
+
+  function test_constants() public view {
+    assertEq(robot.MAX_ACTIONS(), 5, 'unexpected MAX_ACTIONS');
+    assertEq(robot.MAX_SKIP(), 20, 'unexpected MAX_SKIP');
+  }
+
+  function test_supportsInterface() public view {
+    assertTrue(robot.supportsInterface(type(IReceiver).interfaceId), 'IReceiver not supported');
+    assertTrue(
+      robot.supportsInterface(type(IAaveCREReceiver).interfaceId),
+      'IAaveCREReceiver not supported'
+    );
+    assertTrue(robot.supportsInterface(type(IERC165).interfaceId), 'IERC165 not supported');
+    assertFalse(robot.supportsInterface(0xffffffff), 'invalid interface id supported');
+  }
+
+  function test_checkUpkeep_returnsFalse_whenNoPayloads() public {
+    _mockPayloadsCount(0);
+
+    (bool needed, bytes memory performData) = robot.checkUpkeep('');
+    assertFalse(needed, 'upkeep needed without payloads');
+    assertEq(performData.length, 0, 'performData should be empty');
+  }
+
+  /// A single payload, over every state, around its execution time, enabled or disabled.
+  function test_fuzz_checkUpkeep_singlePayload(
+    uint8 stateSeed,
+    int256 secondsFromExecutionTime,
+    bool disabled
+  ) public {
+    IPayloadsControllerCore.PayloadState state = IPayloadsControllerCore.PayloadState(
+      bound(stateSeed, 0, uint8(type(IPayloadsControllerCore.PayloadState).max))
+    );
+    int256 offset = bound(secondsFromExecutionTime, -2 days, 2 days);
+    uint40 queuedAt = uint40(uint256(int256(uint256(NOW)) - int256(uint256(DELAY)) - offset));
+
+    _mockPayloadsCount(1);
+    _mockPayload(0, state, queuedAt);
+    if (disabled) {
+      vm.prank(guardian);
+      robot.disablePayload(0);
+    }
+
+    (bool needed, bytes memory performData) = robot.checkUpkeep('');
+
+    bool expected = !disabled && state == IPayloadsControllerCore.PayloadState.Queued && offset > 0;
+    assertEq(needed, expected, 'unexpected upkeepNeeded');
+    if (expected) assertEq(_decode(performData), _ids(0), 'unexpected payload ids');
+    else assertEq(performData.length, 0, 'performData should be empty');
+  }
+
+  function test_checkUpkeep_returnsExecutablePayloadsOldestFirst() public {
+    _mockPayloadsCount(4);
+    _mockExecutable(0);
+    _mockPayload(1, IPayloadsControllerCore.PayloadState.Executed, _executableQueuedAt());
+    _mockExecutable(2);
+    _mockExecutable(3);
+
+    (bool needed, bytes memory performData) = robot.checkUpkeep('');
+    assertTrue(needed, 'upkeep should be needed');
+    assertEq(_decode(performData), _ids(0, 2, 3), 'unexpected payload ids');
+  }
+
+  function test_checkUpkeep_capsAtMaxActions_keepingTheNewest() public {
+    uint40 total = uint40(robot.MAX_ACTIONS()) + 3;
+    _mockPayloadsCount(total);
+    for (uint40 i = 0; i < total; i++) _mockExecutable(i);
+
+    (, bytes memory performData) = robot.checkUpkeep('');
+    uint40[] memory ids = _decode(performData);
+    assertEq(ids.length, robot.MAX_ACTIONS(), 'should return MAX_ACTIONS payloads');
+    for (uint256 i = 0; i < ids.length; i++) {
+      assertEq(ids[i], total - robot.MAX_ACTIONS() + i, 'should keep the newest, oldest first');
+    }
+  }
+
+  /// An executable payload below `nonExecutable` newer ones is found iff they are at most MAX_SKIP.
+  function test_fuzz_checkUpkeep_maxSkip(uint256 nonExecutable) public {
+    nonExecutable = bound(nonExecutable, 0, robot.MAX_SKIP() + 5);
+    uint40 total = uint40(nonExecutable) + 1;
+    _mockPayloadsCount(total);
+    _mockExecutable(0);
+    for (uint40 i = 1; i < total; i++) _mockNotExecutable(i);
+
+    (bool needed, ) = robot.checkUpkeep('');
+    assertEq(needed, nonExecutable <= robot.MAX_SKIP(), 'unexpected upkeepNeeded');
+  }
+
+  function test_checkUpkeep_executablePayloadResetsSkipCount() public {
+    uint40 gap = uint40(robot.MAX_SKIP());
+    uint40 total = 2 * gap + 2;
+    _mockPayloadsCount(total);
+    _mockExecutable(0);
+    for (uint40 i = 1; i <= gap; i++) _mockNotExecutable(i);
+    _mockExecutable(gap + 1);
+    for (uint40 i = gap + 2; i < total; i++) _mockNotExecutable(i);
+
+    (, bytes memory performData) = robot.checkUpkeep('');
+    assertEq(_decode(performData), _ids(0, gap + 1), 'both payloads should be found');
+  }
+
+  function test_checkUpkeep_disabledPayloadsDontCountAsSkipped() public {
+    uint40 total = uint40(robot.MAX_SKIP()) + 10;
+    _mockPayloadsCount(total);
+    _mockExecutable(0);
+    for (uint40 i = 1; i < total; i++) {
+      _mockExecutable(i);
+      vm.prank(guardian);
+      robot.disablePayload(i);
+    }
+
+    (, bytes memory performData) = robot.checkUpkeep('');
+    assertEq(_decode(performData), _ids(0), 'payload below disabled ones should be found');
+  }
+
+  function test_fuzz_checkUpkeep_gasCap(uint256 gasPrice, uint256 maxGasPrice) public {
+    gasPrice = bound(gasPrice, 0, uint256(type(int256).max));
+    vm.assume(maxGasPrice != MAX_GAS_PRICE);
+    vm.prank(owner);
+    cappedRobot.setMaxGasPrice(maxGasPrice);
+    _mockGasPrice(int256(gasPrice));
+    _mockPayloadsCount(1);
+    _mockExecutable(0);
+
+    bool inRange = gasPrice <= maxGasPrice;
+    assertEq(cappedRobot.isGasPriceInRange(), inRange, 'unexpected isGasPriceInRange');
+    (bool needed, ) = cappedRobot.checkUpkeep('');
+    assertEq(needed, inRange, 'unexpected upkeepNeeded');
+  }
+
+  function test_checkUpkeep_ignoresGasPrice_whenUncapped() public {
+    _mockGasPrice(type(int256).max);
+    _mockPayloadsCount(1);
+    _mockExecutable(0);
+
+    assertTrue(robot.isGasPriceInRange(), 'uncapped robot should always be in range');
+    (bool needed, ) = robot.checkUpkeep('');
+    assertTrue(needed, 'upkeep should be needed');
+  }
+
+  function test_isGasPriceInRange_false_whenOracleAnswerNegative() public {
+    _mockGasPrice(-1);
+    assertFalse(cappedRobot.isGasPriceInRange(), 'negative answer should be out of range');
+  }
+
+  function test_fuzz_onReport(
+    bool executableA,
+    bool executableB,
+    bool disabledA,
+    bool disabledB
+  ) public {
+    _mockPayloadsCount(2);
+    _mockExecutable(0, executableA);
+    _mockExecutable(1, executableB);
+    _mockExecutePayload(0);
+    _mockExecutePayload(1);
+    vm.startPrank(guardian);
+    if (disabledA) robot.disablePayload(0);
+    if (disabledB) robot.disablePayload(1);
+    vm.stopPrank();
+
+    bool runA = executableA && !disabledA;
+    bool runB = executableB && !disabledB;
+    vm.expectCall(
+      controller,
+      abi.encodeCall(IPayloadsControllerCore.executePayload, (0)),
+      runA ? 1 : 0
+    );
+    vm.expectCall(
+      controller,
+      abi.encodeCall(IPayloadsControllerCore.executePayload, (1)),
+      runB ? 1 : 0
+    );
+    if (!runA && !runB)
+      vm.expectRevert(IExecutionChainRobotReceiver.NoActionCanBePerformed.selector);
+
+    vm.recordLogs();
+    vm.prank(anyone);
+    robot.onReport('', abi.encode(_ids(0, 1)));
+
+    if (!runA && !runB) return;
+    Vm.Log[] memory logs = vm.getRecordedLogs();
+    assertEq(logs.length, (runA ? 1 : 0) + (runB ? 1 : 0), 'one ActionSucceeded per execution');
+    for (uint256 i = 0; i < logs.length; i++) {
+      assertEq(
+        logs[i].topics[0],
+        IExecutionChainRobotReceiver.ActionSucceeded.selector,
+        'wrong event'
+      );
+    }
+    if (runA) assertEq(uint256(logs[0].topics[1]), 0, 'payload 0 should be executed first');
+  }
+
+  function test_onReport_executesInReportOrder() public {
+    _mockExecutable(0);
+    _mockExecutable(1);
+    _mockExecutePayload(0);
+    _mockExecutePayload(1);
+
+    vm.expectEmit(address(robot));
+    emit IExecutionChainRobotReceiver.ActionSucceeded(1);
+    vm.expectEmit(address(robot));
+    emit IExecutionChainRobotReceiver.ActionSucceeded(0);
+
+    vm.prank(anyone);
+    robot.onReport('', abi.encode(_ids(1, 0)));
+  }
+
+  function test_onReport_ignoresGasPrice() public {
+    _mockGasPrice(type(int256).max);
+    _mockExecutable(0);
+    _mockExecutePayload(0);
+    vm.expectCall(controller, abi.encodeCall(IPayloadsControllerCore.executePayload, (0)), 1);
+
+    vm.prank(anyone);
+    cappedRobot.onReport('', abi.encode(_ids(0)));
+  }
+
+  function test_onReport_revertsWith_NoActionCanBePerformed_whenEmptyBatch() public {
+    vm.prank(anyone);
+    vm.expectRevert(IExecutionChainRobotReceiver.NoActionCanBePerformed.selector);
+    robot.onReport('', abi.encode(new uint40[](0)));
+  }
+
+  function test_onReport_bubblesUpExecutePayloadRevert() public {
+    _mockExecutable(0);
+    vm.mockCallRevert(
+      controller,
+      abi.encodeCall(IPayloadsControllerCore.executePayload, (0)),
+      bytes('payload failed')
+    );
+
+    vm.prank(anyone);
+    vm.expectRevert(bytes('payload failed'));
+    robot.onReport('', abi.encode(_ids(0)));
+  }
+
+  function test_disablePayload_byOwner() public {
+    vm.expectEmit(address(robot));
+    emit IExecutionChainRobotReceiver.PayloadDisabled(7, true);
+
+    vm.prank(owner);
+    robot.disablePayload(7);
+    assertTrue(robot.isPayloadDisabled(7), 'payload not disabled');
+  }
+
+  function test_disablePayload_byGuardian() public {
+    vm.prank(guardian);
+    robot.disablePayload(7);
+    assertTrue(robot.isPayloadDisabled(7), 'payload not disabled');
+  }
+
+  function test_disablePayload_revertsWith_OnlyGuardianOrOwnerInvalidCaller() public {
+    vm.prank(bob);
+    vm.expectRevert(
+      abi.encodeWithSelector(IWithGuardian.OnlyGuardianOrOwnerInvalidCaller.selector, bob)
+    );
+    robot.disablePayload(7);
+  }
+
+  function test_disablePayload_revertsWith_PayloadStatusUnchanged() public {
+    vm.startPrank(guardian);
+    robot.disablePayload(7);
+    vm.expectRevert(
+      abi.encodeWithSelector(IExecutionChainRobotReceiver.PayloadStatusUnchanged.selector, 7, true)
+    );
+    robot.disablePayload(7);
+    vm.stopPrank();
+  }
+
+  function test_enablePayload() public {
+    vm.prank(guardian);
+    robot.disablePayload(7);
+
+    vm.expectEmit(address(robot));
+    emit IExecutionChainRobotReceiver.PayloadDisabled(7, false);
+
+    vm.prank(owner);
+    robot.enablePayload(7);
+    assertFalse(robot.isPayloadDisabled(7), 'payload still disabled');
+  }
+
+  function test_enablePayload_revertsWhenCalledByGuardian() public {
+    vm.prank(guardian);
+    robot.disablePayload(7);
+
+    vm.prank(guardian);
+    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, guardian));
+    robot.enablePayload(7);
+  }
+
+  function test_enablePayload_revertsWith_PayloadStatusUnchanged() public {
+    vm.prank(owner);
+    vm.expectRevert(
+      abi.encodeWithSelector(IExecutionChainRobotReceiver.PayloadStatusUnchanged.selector, 7, false)
+    );
+    robot.enablePayload(7);
+  }
+
+  function test_setMaxGasPrice() public {
+    vm.expectEmit(address(cappedRobot));
+    emit IExecutionChainRobotReceiver.MaxGasPriceSet(50 gwei);
+
+    vm.prank(owner);
+    cappedRobot.setMaxGasPrice(50 gwei);
+    assertEq(cappedRobot.getMaxGasPrice(), 50 gwei, 'max gas price not updated');
+  }
+
+  function test_setMaxGasPrice_revertsWith_OwnableUnauthorized() public {
+    vm.prank(guardian);
+    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, guardian));
+    cappedRobot.setMaxGasPrice(50 gwei);
+  }
+
+  function test_setMaxGasPrice_revertsWith_MaxGasPriceUnchanged() public {
+    vm.prank(owner);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IExecutionChainRobotReceiver.MaxGasPriceUnchanged.selector,
+        MAX_GAS_PRICE
+      )
+    );
+    cappedRobot.setMaxGasPrice(MAX_GAS_PRICE);
+  }
+
+  function test_setMaxGasPrice_revertsWith_GasPriceCapNotSupported_whenUncapped() public {
+    vm.prank(owner);
+    vm.expectRevert(IExecutionChainRobotReceiver.GasPriceCapNotSupported.selector);
+    robot.setMaxGasPrice(50 gwei);
+  }
+
+  function test_rescueGuardian_isOwner() public view {
+    assertEq(robot.rescueGuardian(), owner, 'rescue guardian is not the owner');
+  }
+
+  function test_rescueToken_revertsWith_OnlyRescueGuardian() public {
+    vm.prank(guardian);
+    vm.expectRevert(IRescuable.OnlyRescueGuardian.selector);
+    robot.rescueToken(makeAddr('token'), bob, 100);
+  }
+
+  function _executableQueuedAt() internal pure returns (uint40) {
+    return NOW - DELAY - 1;
+  }
+
+  function _mockExecutable(uint40 payloadId) internal {
+    _mockPayload(payloadId, IPayloadsControllerCore.PayloadState.Queued, _executableQueuedAt());
+  }
+
+  /// @dev Queued but still in its timelock.
+  function _mockNotExecutable(uint40 payloadId) internal {
+    _mockPayload(payloadId, IPayloadsControllerCore.PayloadState.Queued, NOW - DELAY);
+  }
+
+  function _mockExecutable(uint40 payloadId, bool executable) internal {
+    if (executable) _mockExecutable(payloadId);
+    else _mockNotExecutable(payloadId);
+  }
+
+  function _mockPayload(
+    uint40 payloadId,
+    IPayloadsControllerCore.PayloadState state,
+    uint40 queuedAt
+  ) internal {
+    IPayloadsControllerCore.Payload memory payload;
+    payload.state = state;
+    payload.queuedAt = queuedAt;
+    payload.delay = DELAY;
+    payload.gracePeriod = GRACE_PERIOD;
+    vm.mockCall(
+      controller,
+      abi.encodeCall(IPayloadsControllerCore.getPayloadById, (payloadId)),
+      abi.encode(payload)
+    );
+  }
+
+  function _mockPayloadsCount(uint40 count) internal {
+    vm.mockCall(
+      controller,
+      abi.encodeCall(IPayloadsControllerCore.getPayloadsCount, ()),
+      abi.encode(count)
+    );
+  }
+
+  function _mockExecutePayload(uint40 payloadId) internal {
+    vm.mockCall(
+      controller,
+      abi.encodeCall(IPayloadsControllerCore.executePayload, (payloadId)),
+      ''
+    );
+  }
+
+  function _mockGasPrice(int256 gasPrice) internal {
+    vm.mockCall(oracle, abi.encodeCall(AggregatorInterface.latestAnswer, ()), abi.encode(gasPrice));
+  }
+
+  function _decode(bytes memory performData) internal pure returns (uint40[] memory) {
+    return abi.decode(performData, (uint40[]));
+  }
+
+  function _ids(uint40 a) internal pure returns (uint40[] memory arr) {
+    arr = new uint40[](1);
+    arr[0] = a;
+  }
+
+  function _ids(uint40 a, uint40 b) internal pure returns (uint40[] memory arr) {
+    arr = new uint40[](2);
+    arr[0] = a;
+    arr[1] = b;
+  }
+
+  function _ids(uint40 a, uint40 b, uint40 c) internal pure returns (uint40[] memory arr) {
+    arr = new uint40[](3);
+    arr[0] = a;
+    arr[1] = b;
+    arr[2] = c;
+  }
+
+  function assertEq(uint40[] memory a, uint40[] memory b, string memory err) internal pure {
+    assertEq(a.length, b.length, string.concat(err, ': length'));
+    for (uint256 i = 0; i < a.length; i++) assertEq(uint256(a[i]), uint256(b[i]), err);
+  }
+}
