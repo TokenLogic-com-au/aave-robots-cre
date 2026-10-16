@@ -9,3 +9,23 @@ production-settings:
   rpcs:
     - chain-name: ethereum-mainnet
       url: https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}
+
+# ExecutionChainRobot: one cron trigger per chain's PayloadsController.
+execution-chain-robot-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: ${RPC_MAINNET}
+    - chain-name: avalanche-mainnet
+      url: ${RPC_AVALANCHE}
+    - chain-name: polygon-mainnet
+      url: ${RPC_POLYGON}
+    - chain-name: ethereum-mainnet-optimism-1
+      url: ${RPC_OPTIMISM}
+    - chain-name: ethereum-mainnet-arbitrum-1
+      url: ${RPC_ARBITRUM}
+    - chain-name: ethereum-mainnet-base-1
+      url: ${RPC_BASE}
+    - chain-name: binance_smart_chain-mainnet
+      url: ${RPC_BNB}
