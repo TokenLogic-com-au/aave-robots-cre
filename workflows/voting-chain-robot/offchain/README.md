@@ -1,10 +1,10 @@
 # Voting Chain Robot — CRE workflow
 
 Off-chain CRE workflow driving [`VotingChainRobotReceiver`](../src/VotingChainRobotReceiver.sol)
-on the three Governance V3 voting chains. Every 5 minutes, for each chain, it calls the
-receiver's `checkUpkeep` with empty `checkData`; when an action is due it estimates
-`onReport` with the returned `performData`, then signs it and writes it back as the
-receiver's `onReport`. One cron trigger per chain (Ethereum, Avalanche, Polygon).
+on the three Governance V3 voting chains. Every 30 seconds, like the other governance
+robots, for each chain it calls the receiver's `checkUpkeep` with empty `checkData`; when
+an action is due it estimates `onReport` with the returned `performData`, then signs it
+and writes it back as the receiver's `onReport`. One cron trigger per chain (Ethereum, Avalanche, Polygon).
 
 A CRE write carries at most 16,777,216 gas (`MAX_WRITE_GAS`, the current
 `ChainWrite.EVM` quota): a report estimated above it is skipped and logged. A full batch
