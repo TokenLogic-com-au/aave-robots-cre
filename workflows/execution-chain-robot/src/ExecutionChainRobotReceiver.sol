@@ -79,7 +79,7 @@ contract ExecutionChainRobotReceiver is
   }
 
   /// @inheritdoc IExecutionChainRobotReceiver
-  function setMaxGasPrice(uint256 maxGasPrice) external onlyOwner {
+  function setMaxGasPrice(uint256 maxGasPrice) external onlyOwnerOrGuardian {
     require(GAS_PRICE_ORACLE != address(0), GasPriceCapNotSupported());
     require(maxGasPrice != _maxGasPrice, MaxGasPriceUnchanged(maxGasPrice));
 
