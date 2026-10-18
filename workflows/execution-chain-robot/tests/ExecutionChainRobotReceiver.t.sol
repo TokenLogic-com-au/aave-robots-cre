@@ -376,7 +376,7 @@ contract ExecutionChainRobotReceiverTest is Test {
     robot.enablePayload(7);
   }
 
-  function test_setMaxGasPrice() public {
+  function test_setMaxGasPrice_byOwner() public {
     vm.expectEmit(address(cappedRobot));
     emit IExecutionChainRobotReceiver.MaxGasPriceSet(50 gwei);
 
@@ -385,14 +385,25 @@ contract ExecutionChainRobotReceiverTest is Test {
     assertEq(cappedRobot.getMaxGasPrice(), 50 gwei, 'max gas price not updated');
   }
 
-  function test_setMaxGasPrice_revertsWith_OwnableUnauthorized() public {
+  function test_setMaxGasPrice_byGuardian() public {
+    vm.expectEmit(address(cappedRobot));
+    emit IExecutionChainRobotReceiver.MaxGasPriceSet(50 gwei);
+
     vm.prank(guardian);
-    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, guardian));
+    cappedRobot.setMaxGasPrice(50 gwei);
+    assertEq(cappedRobot.getMaxGasPrice(), 50 gwei, 'max gas price not updated');
+  }
+
+  function test_setMaxGasPrice_revertsWith_OnlyGuardianOrOwnerInvalidCaller() public {
+    vm.prank(bob);
+    vm.expectRevert(
+      abi.encodeWithSelector(IWithGuardian.OnlyGuardianOrOwnerInvalidCaller.selector, bob)
+    );
     cappedRobot.setMaxGasPrice(50 gwei);
   }
 
   function test_setMaxGasPrice_revertsWith_MaxGasPriceUnchanged() public {
-    vm.prank(owner);
+    vm.prank(guardian);
     vm.expectRevert(
       abi.encodeWithSelector(
         IExecutionChainRobotReceiver.MaxGasPriceUnchanged.selector,
@@ -403,7 +414,7 @@ contract ExecutionChainRobotReceiverTest is Test {
   }
 
   function test_setMaxGasPrice_revertsWith_GasPriceCapNotSupported_whenUncapped() public {
-    vm.prank(owner);
+    vm.prank(guardian);
     vm.expectRevert(IExecutionChainRobotReceiver.GasPriceCapNotSupported.selector);
     robot.setMaxGasPrice(50 gwei);
   }

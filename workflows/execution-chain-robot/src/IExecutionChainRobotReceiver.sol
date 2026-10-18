@@ -65,7 +65,7 @@ interface IExecutionChainRobotReceiver is IAaveCREReceiver {
   /// @param payloadId The payload to enable. Must be currently disabled.
   function enablePayload(uint40 payloadId) external;
 
-  /// @notice Set the gas price above which `checkUpkeep` stands down. Owner-only.
+  /// @notice Set the gas price above which `checkUpkeep` stands down. Owner or guardian.
   /// @param maxGasPrice The new cap, in wei. Must differ from the current one.
   function setMaxGasPrice(uint256 maxGasPrice) external;
 
