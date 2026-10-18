@@ -24,7 +24,7 @@ One entry per chain in [`config.production.json`](config.production.json), in th
 `DeployExecutionChainRobotReceiver.getDeployConfig` (checked by
 `DeployExecutionChainRobotReceiver.t.sol`). `receiver` is filled in after the contract is
 deployed on that chain. Chains with an empty `receiver` get no trigger, so the workflow can
-only be simulated once at least one receiver is set. 7 chains is within CRE's limit of 10
+only be simulated once at least one receiver is set. 8 chains is within CRE's limit of 10
 triggers per workflow.
 
 ## Setup

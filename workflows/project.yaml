@@ -29,3 +29,5 @@ execution-chain-robot-production-settings:
       url: ${RPC_BASE}
     - chain-name: binance_smart_chain-mainnet
       url: ${RPC_BNB}
+    - chain-name: plasma-mainnet
+      url: ${RPC_PLASMA}

@@ -35,6 +35,11 @@
       "chainName": "binance_smart_chain-mainnet",
       "isTestnet": false,
       "receiver": ""
+    },
+    {
+      "chainName": "plasma-mainnet",
+      "isTestnet": false,
+      "receiver": ""
     }
   ]
 }

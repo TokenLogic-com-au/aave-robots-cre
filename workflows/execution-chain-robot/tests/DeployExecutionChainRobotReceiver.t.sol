@@ -63,7 +63,7 @@ contract DeployExecutionChainRobotReceiverTest is Test {
 
   function test_getDeployConfig_revertsOnUnsupportedChain() public {
     vm.expectRevert(bytes('unsupported chain'));
-    script.getDeployConfig(ChainIds.PLASMA);
+    script.getDeployConfig(ChainIds.MONAD);
   }
 
   function test_run_deploysWithChainConfig() public {
@@ -83,7 +83,7 @@ contract DeployExecutionChainRobotReceiverTest is Test {
 
   /// In `config.production.json` order.
   function _supportedChainIds() internal pure returns (uint256[] memory ids) {
-    ids = new uint256[](7);
+    ids = new uint256[](8);
     ids[0] = ChainIds.MAINNET;
     ids[1] = ChainIds.AVALANCHE;
     ids[2] = ChainIds.POLYGON;
@@ -91,6 +91,7 @@ contract DeployExecutionChainRobotReceiverTest is Test {
     ids[4] = ChainIds.ARBITRUM;
     ids[5] = ChainIds.BASE;
     ids[6] = ChainIds.BNB;
+    ids[7] = ChainIds.PLASMA;
   }
 
   function _chainId(string memory chainName) internal pure returns (uint256) {
@@ -102,6 +103,7 @@ contract DeployExecutionChainRobotReceiverTest is Test {
     if (name == keccak256('ethereum-mainnet-arbitrum-1')) return ChainIds.ARBITRUM;
     if (name == keccak256('ethereum-mainnet-base-1')) return ChainIds.BASE;
     if (name == keccak256('binance_smart_chain-mainnet')) return ChainIds.BNB;
+    if (name == keccak256('plasma-mainnet')) return ChainIds.PLASMA;
     revert(string.concat('unknown CRE chain name: ', chainName));
   }
 }

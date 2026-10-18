@@ -6,7 +6,7 @@ CRE robot that executes Aave Governance V3 payloads once they are queued in a ch
 and, on Ethereum, of
 [`GasCappedExecutionChainRobotKeeper`](https://github.com/bgd-labs/aave-governance-v3-robots/blob/main/src/contracts/gasprice-capped-robots/GasCappedExecutionChainRobotKeeper.sol),
 which only acts while the network gas price is under a cap. One receiver per chain:
-Ethereum, Avalanche, Polygon, Optimism, Arbitrum, Base and BNB.
+Ethereum, Avalanche, Polygon, Optimism, Arbitrum, Base, BNB and Plasma.
 
 ## Layout
 
@@ -69,7 +69,8 @@ is the zero address and there is no cap.
 - BGD's owner-only `toggleDisableAutomationById` becomes `disablePayload` (owner or
   guardian) / `enablePayload` (owner), which revert when the status doesn't change, and
   `onReport` also skips disabled payloads.
-- `setMaxGasPrice` reverts when the cap doesn't change and on a receiver without oracle.
+- `setMaxGasPrice` is owner or guardian (BGD: owner-only), and reverts when the cap doesn't
+  change and on a receiver without oracle.
 
 ### State and access control
 
@@ -82,8 +83,9 @@ is the zero address and there is no cap.
 - `enablePayload(payloadId)` — owner-only. Reverts `PayloadStatusUnchanged` if not
   disabled.
 - Both emit `PayloadDisabled(payloadId, disabled)`.
-- `setMaxGasPrice(maxGasPrice)` — owner-only. Reverts `MaxGasPriceUnchanged` if equal to
-  the current cap and `GasPriceCapNotSupported` without an oracle. Emits `MaxGasPriceSet`.
+- `setMaxGasPrice(maxGasPrice)` — owner or guardian, so the cap can follow the gas market
+  without a governance vote. Reverts `MaxGasPriceUnchanged` if equal to the current cap and
+  `GasPriceCapNotSupported` without an oracle. Emits `MaxGasPriceSet`.
 - The contract is `Rescuable`; the owner is the rescue guardian.
 
 ## Testing
@@ -91,18 +93,19 @@ is the zero address and there is no cap.
 ```bash
 # from repo root
 forge test --match-path 'workflows/execution-chain-robot/tests/*.t.sol' --no-match-contract 'Fork' -vvv   # unit
-forge test --match-contract 'ExecutionChainRobotReceiverFork' -vvv   # fork; needs RPC_MAINNET/AVALANCHE/POLYGON/OPTIMISM/ARBITRUM/BASE/BNB
+forge test --match-contract 'ExecutionChainRobotReceiverFork' -vvv   # fork; needs RPC_MAINNET/AVALANCHE/POLYGON/OPTIMISM/ARBITRUM/BASE/BNB (+ RPC_PLASMA)
 cd workflows/execution-chain-robot/offchain && bun test                                                 # CRE workflow (bun)
 ```
 
 On every chain, the fork suite runs the deploy script, creates a payload on the live
 `PayloadsController`, queues it as the chain's `CrossChainController` delivers a passed
 proposal from Ethereum governance, and checks the robot only picks it once its delay has
-passed and executes it. It also checks the receiver agrees with BGD's live keeper (same
+passed and executes it. It also checks the receiver agrees with BGD's live keeper, on every chain but Plasma (same
 `PayloadsController`, same `upkeepNeeded`, BGD's pick among the receiver's ids), the
 Ethereum gas cap against BGD's, and that an expired payload is skipped. On Ethereum, the
 harness's `canPayloadBeExecuted` is checked against the live `executePayload` at each
-timelock and expiry boundary.
+timelock and expiry boundary. The Plasma case is skipped without `RPC_PLASMA` (the public
+`https://rpc.plasma.to` works).
 
 `workflow.test.ts` runs `createReceiverHandler` against a mocked cre-sdk EVM client
 (`EvmMock`) for each branch. Requires `bun` on PATH.
@@ -116,9 +119,15 @@ owner / guardian, plus the gas cap on Ethereum. It reverts on any other chain.
 `DeployExecutionChainRobotReceiver.t.sol` checks the chains match
 `offchain/config.production.json`.
 
+Monad is not covered: the pinned `aave-address-book` has no `GovernanceV3Monad`. Adding it
+takes its `PAYLOADS_CONTROLLER`, `EXECUTOR_LVL_1` and `GOVERNANCE_GUARDIAN` (hardcoded from
+upstream, as the GSM freezer does, or an address book bump), a `monad-mainnet` config and
+`project.yaml` entry with `RPC_MONAD`, and a fork case that only runs with `--network monad`
+(forge needs Monad's EVM to fork it). The workflow would then have 9 of CRE's 10 triggers.
+
 ```bash
 # from repo root, with ACCOUNT_NAME=<your-keystore-name> in .env
-# env: Mainnet, Avalanche, Polygon, Optimism, Arbitrum, Base or BNB
+# env: Mainnet, Avalanche, Polygon, Optimism, Arbitrum, Base, BNB or Plasma
 make deploy-execution-chain-robot env=Mainnet dry=1   # simulate
 make deploy-execution-chain-robot env=Mainnet         # broadcast + verify
 ```
@@ -133,8 +142,8 @@ make deploy-execution-chain-robot env=Mainnet         # broadcast + verify
    legacy CRE automation workflow). Running both is harmless, the second execution of a
    payload just fails `estimateGas` and is skipped, but wastes reads.
 
-No governance proposal is needed: the receiver needs no role. Only changing the Ethereum
-gas cap later (`setMaxGasPrice`) goes through the owner, `EXECUTOR_LVL_1`.
+No governance proposal is needed: the receiver needs no role. The Ethereum gas cap can
+later be changed (`setMaxGasPrice`) by the guardian as well as the owner.
 
 Post-deploy checks (substitute the deployed `<receiver>`):
 
