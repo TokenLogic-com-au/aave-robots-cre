@@ -12,10 +12,11 @@ import {GovernanceV3Optimism} from 'aave-address-book/GovernanceV3Optimism.sol';
 import {GovernanceV3Arbitrum} from 'aave-address-book/GovernanceV3Arbitrum.sol';
 import {GovernanceV3Base} from 'aave-address-book/GovernanceV3Base.sol';
 import {GovernanceV3BNB} from 'aave-address-book/GovernanceV3BNB.sol';
+import {GovernanceV3Plasma} from 'aave-address-book/GovernanceV3Plasma.sol';
 
 import {ExecutionChainRobotReceiver} from '../src/ExecutionChainRobotReceiver.sol';
 
-// make deploy-execution-chain-robot env=<Mainnet|Avalanche|Polygon|Optimism|Arbitrum|Base|BNB> [dry=1]
+// make deploy-execution-chain-robot env=<Mainnet|Avalanche|Polygon|Optimism|Arbitrum|Base|BNB|Plasma> [dry=1]
 contract DeployExecutionChainRobotReceiver is Script {
   struct DeployConfig {
     address payloadsController;
@@ -109,6 +110,14 @@ contract DeployExecutionChainRobotReceiver is Script {
           address(GovernanceV3BNB.PAYLOADS_CONTROLLER),
           GovernanceV3BNB.EXECUTOR_LVL_1,
           GovernanceV3BNB.GOVERNANCE_GUARDIAN
+        );
+
+    if (chainId == ChainIds.PLASMA)
+      return
+        _uncapped(
+          address(GovernanceV3Plasma.PAYLOADS_CONTROLLER),
+          GovernanceV3Plasma.EXECUTOR_LVL_1,
+          GovernanceV3Plasma.GOVERNANCE_GUARDIAN
         );
 
     revert('unsupported chain');

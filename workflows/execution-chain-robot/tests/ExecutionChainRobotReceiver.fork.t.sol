@@ -15,6 +15,7 @@ import {GovernanceV3Optimism} from 'aave-address-book/GovernanceV3Optimism.sol';
 import {GovernanceV3Arbitrum} from 'aave-address-book/GovernanceV3Arbitrum.sol';
 import {GovernanceV3Base} from 'aave-address-book/GovernanceV3Base.sol';
 import {GovernanceV3BNB} from 'aave-address-book/GovernanceV3BNB.sol';
+import {GovernanceV3Plasma} from 'aave-address-book/GovernanceV3Plasma.sol';
 
 import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
 
@@ -73,6 +74,12 @@ contract ExecutionChainRobotReceiverForkTest is Test {
 
   function test_fork_bnb_executesQueuedPayload() public {
     _executesQueuedPayload('bnb', BGD_KEEPER_BNB);
+  }
+
+  /// No BGD keeper to compare against on Plasma.
+  function test_fork_plasma_executesQueuedPayload() public {
+    vm.skip(!vm.envExists('RPC_PLASMA'), 'RPC_PLASMA not set');
+    _executesQueuedPayload('plasma', address(0));
   }
 
   function test_fork_ethereum_gasCapMatchesBgdKeeper() public {
@@ -178,12 +185,6 @@ contract ExecutionChainRobotReceiverForkTest is Test {
     vm.createSelectFork(chain);
     ExecutionChainRobotReceiver receiver = _deploy();
     IPayloadsControllerCore controller = receiver.PAYLOADS_CONTROLLER();
-
-    assertEq(
-      address(controller),
-      address(IExecutionChainRobotReceiver(bgdKeeper).PAYLOADS_CONTROLLER()),
-      string.concat(chain, ': PayloadsController differs from the BGD keeper')
-    );
     _assertAgreesWithBgdKeeper(receiver, bgdKeeper, chain);
 
     uint40 payloadId = _createAndQueuePayload(controller);
@@ -206,13 +207,21 @@ contract ExecutionChainRobotReceiverForkTest is Test {
     _assertPicked(receiver, payloadId, false);
   }
 
-  /// Both robots see the same executable payloads: BGD's picks one of the (up to) MAX_ACTIONS
-  /// newest at random, which must be among the ones the receiver returns.
+  /// Both robots use the same PayloadsController and see the same executable payloads: BGD's
+  /// picks one of the (up to) MAX_ACTIONS newest at random, which must be among the ones the
+  /// receiver returns. No-op without a BGD keeper on the chain.
   function _assertAgreesWithBgdKeeper(
     ExecutionChainRobotReceiver receiver,
     address bgdKeeper,
     string memory chain
   ) internal view {
+    if (bgdKeeper == address(0)) return;
+
+    assertEq(
+      address(receiver.PAYLOADS_CONTROLLER()),
+      address(IExecutionChainRobotReceiver(bgdKeeper).PAYLOADS_CONTROLLER()),
+      string.concat(chain, ': PayloadsController differs from the BGD keeper')
+    );
     (bool needed, bytes memory performData) = receiver.checkUpkeep('');
     (bool bgdNeeded, bytes memory bgdPerformData) = IAaveCREReceiver(bgdKeeper).checkUpkeep('');
     assertEq(needed, bgdNeeded, string.concat(chain, ': upkeepNeeded differs from the BGD keeper'));
@@ -288,6 +297,7 @@ contract ExecutionChainRobotReceiverForkTest is Test {
     if (chainId == ChainIds.ARBITRUM) return GovernanceV3Arbitrum.CROSS_CHAIN_CONTROLLER;
     if (chainId == ChainIds.BASE) return GovernanceV3Base.CROSS_CHAIN_CONTROLLER;
     if (chainId == ChainIds.BNB) return GovernanceV3BNB.CROSS_CHAIN_CONTROLLER;
+    if (chainId == ChainIds.PLASMA) return GovernanceV3Plasma.CROSS_CHAIN_CONTROLLER;
     revert('unsupported chain');
   }
 
