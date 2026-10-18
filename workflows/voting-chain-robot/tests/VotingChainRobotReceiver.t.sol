@@ -17,7 +17,7 @@ import {IReceiver} from 'aave-cre/IReceiver.sol';
 import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
 
 import {VotingChainRobotReceiver} from '../src/VotingChainRobotReceiver.sol';
-import {IVotingChainRobotReceiver, IRootsConsumer} from '../src/IVotingChainRobotReceiver.sol';
+import {IVotingChainRobotReceiver} from '../src/IVotingChainRobotReceiver.sol';
 import {DeployVotingChainRobotReceiver} from '../scripts/DeployVotingChainRobotReceiver.s.sol';
 import {VotingChainRobotReceiverHarness} from './helpers/VotingChainRobotReceiverHarness.sol';
 
@@ -35,7 +35,6 @@ contract VotingChainRobotReceiverTest is Test {
   address internal votingStrategy = makeAddr('votingStrategy');
   address internal dataWarehouse = makeAddr('dataWarehouse');
   address internal governance = makeAddr('governance');
-  address internal rootsConsumer = makeAddr('rootsConsumer');
   address internal gasOracle = makeAddr('gasOracle');
 
   function setUp() public {
@@ -43,7 +42,6 @@ contract VotingChainRobotReceiverTest is Test {
     vm.etch(votingMachine, hex'00');
     vm.etch(votingStrategy, hex'00');
     vm.etch(dataWarehouse, hex'00');
-    vm.etch(rootsConsumer, hex'00');
     vm.etch(gasOracle, hex'00');
 
     vm.mockCall(
@@ -64,7 +62,6 @@ contract VotingChainRobotReceiverTest is Test {
 
     robot = _deploy(gasOracle, MAX_GAS_PRICE);
     _mockGasPrice(1 gwei);
-    _mockRobotKeeper(address(robot));
     _mockProposalIds(0, new uint256[](0));
     _mockProposalIds(robot.PAGE_SIZE(), new uint256[](0));
   }
@@ -74,7 +71,6 @@ contract VotingChainRobotReceiverTest is Test {
     assertEq(address(robot.VOTING_STRATEGY()), votingStrategy, 'voting strategy mismatch');
     assertEq(address(robot.DATA_WAREHOUSE()), dataWarehouse, 'data warehouse mismatch');
     assertEq(robot.GOVERNANCE(), governance, 'governance mismatch');
-    assertEq(address(robot.ROOTS_CONSUMER()), rootsConsumer, 'roots consumer mismatch');
     assertEq(address(robot.GAS_PRICE_ORACLE()), gasOracle, 'gas price oracle mismatch');
     assertEq(robot.getMaxGasPrice(), MAX_GAS_PRICE, 'max gas price mismatch');
     assertEq(robot.owner(), owner, 'owner mismatch');
@@ -95,12 +91,7 @@ contract VotingChainRobotReceiverTest is Test {
 
   function test_constructor_revertsWith_InvalidAddress_whenVotingMachineIsZero() public {
     vm.expectRevert(IVotingChainRobotReceiver.InvalidAddress.selector);
-    new VotingChainRobotReceiver(address(0), rootsConsumer, gasOracle, 0, owner, guardian);
-  }
-
-  function test_constructor_revertsWith_InvalidAddress_whenRootsConsumerIsZero() public {
-    vm.expectRevert(IVotingChainRobotReceiver.InvalidAddress.selector);
-    new VotingChainRobotReceiver(votingMachine, address(0), gasOracle, 0, owner, guardian);
+    new VotingChainRobotReceiver(address(0), gasOracle, 0, owner, guardian);
   }
 
   function test_constructor_revertsWith_GasPriceCapNotSupported() public {
@@ -128,8 +119,6 @@ contract VotingChainRobotReceiverTest is Test {
     uint8 stateSeed,
     bool strategyRoots,
     bool governanceRoot,
-    bool requested,
-    bool isRobotKeeper,
     bool disabled
   ) public {
     IVotingMachineWithProofs.ProposalState state = IVotingMachineWithProofs.ProposalState(
@@ -137,8 +126,6 @@ contract VotingChainRobotReceiverTest is Test {
     );
     _setupProposal(1, state, _hash(1));
     _mockRoots(_hash(1), strategyRoots, governanceRoot);
-    robot.setRootsRequested(_hash(1), requested);
-    _mockRobotKeeper(isRobotKeeper ? address(robot) : bob);
     if (disabled) {
       vm.prank(guardian);
       robot.disableAutomation(1);
@@ -146,21 +133,24 @@ contract VotingChainRobotReceiverTest is Test {
 
     (bool due, IVotingChainRobotReceiver.ProposalAction action) = robot.getAction(1);
 
-    bool notCreated = state == IVotingMachineWithProofs.ProposalState.NotCreated;
-    bool hasRoots = strategyRoots && governanceRoot;
-    bool submitRoots = notCreated && !hasRoots && !requested && isRobotKeeper;
-    bool createVote = notCreated && hasRoots;
+    bool createVote = state == IVotingMachineWithProofs.ProposalState.NotCreated &&
+      strategyRoots &&
+      governanceRoot;
     bool closeVote = state == IVotingMachineWithProofs.ProposalState.Finished;
 
-    assertEq(due, !disabled && (submitRoots || createVote || closeVote), 'unexpected due');
+    assertEq(due, !disabled && (createVote || closeVote), 'unexpected due');
+    assertEq(
+      robot.canCreateVote(state, 1),
+      createVote,
+      'canCreateVote disagrees with the roots and state'
+    );
     if (!due) return;
-    if (submitRoots)
-      _assertAction(action, IVotingChainRobotReceiver.ProposalAction.PerformSubmitRoots);
-    if (createVote)
-      _assertAction(action, IVotingChainRobotReceiver.ProposalAction.PerformCreateVote);
-    if (closeVote) {
-      _assertAction(action, IVotingChainRobotReceiver.ProposalAction.PerformCloseAndSendVote);
-    }
+    _assertAction(
+      action,
+      createVote
+        ? IVotingChainRobotReceiver.ProposalAction.PerformCreateVote
+        : IVotingChainRobotReceiver.ProposalAction.PerformCloseAndSendVote
+    );
   }
 
   function test_fuzz_isGasPriceInRange(uint256 gasPrice, uint256 maxGasPrice) public {
@@ -204,6 +194,7 @@ contract VotingChainRobotReceiverTest is Test {
     assertTrue(needed, 'upkeep should be needed without a gas price cap');
   }
 
+  /// A vote whose roots are missing (4) waits for the storage roots workflow.
   function test_checkUpkeep_returnsActionsOfEachKind_latestFirst() public {
     _mockProposalIds(0, _ids(4, 4));
     _setupProposal(4, IVotingMachineWithProofs.ProposalState.NotCreated, _hash(4));
@@ -217,11 +208,10 @@ contract VotingChainRobotReceiverTest is Test {
     assertTrue(needed, 'upkeep should be needed');
 
     IVotingChainRobotReceiver.ActionWithId[] memory actions = _decode(performData);
-    assertEq(actions.length, 3, 'unexpected number of actions');
-    _assertActionWithId(actions[0], 4, IVotingChainRobotReceiver.ProposalAction.PerformSubmitRoots);
-    _assertActionWithId(actions[1], 3, IVotingChainRobotReceiver.ProposalAction.PerformCreateVote);
+    assertEq(actions.length, 2, 'unexpected number of actions');
+    _assertActionWithId(actions[0], 3, IVotingChainRobotReceiver.ProposalAction.PerformCreateVote);
     _assertActionWithId(
-      actions[2],
+      actions[1],
       1,
       IVotingChainRobotReceiver.ProposalAction.PerformCloseAndSendVote
     );
@@ -291,23 +281,6 @@ contract VotingChainRobotReceiverTest is Test {
     assertEq(actions[0].id, 1, 'unexpected proposal');
   }
 
-  function test_onReport_requestsRoots_whenAnyoneCalls() public {
-    _setupProposal(1, IVotingMachineWithProofs.ProposalState.NotCreated, _hash(1));
-    _mockRoots(_hash(1), false, false);
-    _mockRequestSubmitRoots(_hash(1));
-
-    vm.expectCall(rootsConsumer, abi.encodeCall(IRootsConsumer.requestSubmitRoots, (_hash(1))));
-    vm.expectEmit(address(robot));
-    emit IVotingChainRobotReceiver.ActionSucceeded(
-      1,
-      IVotingChainRobotReceiver.ProposalAction.PerformSubmitRoots
-    );
-
-    vm.prank(anyone);
-    robot.onReport('', _report(1, IVotingChainRobotReceiver.ProposalAction.PerformSubmitRoots));
-    assertTrue(robot.isRootsRequested(_hash(1)), 'roots request not recorded');
-  }
-
   function test_onReport_startsVote() public {
     _setupProposal(1, IVotingMachineWithProofs.ProposalState.NotCreated, _hash(1));
     _mockRoots(_hash(1), true, true);
@@ -366,21 +339,6 @@ contract VotingChainRobotReceiverTest is Test {
     assertEq(uint256(logs[1].topics[1]), 2, 'latest proposal not performed last');
   }
 
-  function test_onReport_requestsRootsOnce_forProposalsSharingBlockHash() public {
-    _setupProposal(2, IVotingMachineWithProofs.ProposalState.NotCreated, _hash(1));
-    _setupProposal(1, IVotingMachineWithProofs.ProposalState.NotCreated, _hash(1));
-    _mockRoots(_hash(1), false, false);
-    _mockRequestSubmitRoots(_hash(1));
-
-    IVotingChainRobotReceiver.ActionWithId[]
-      memory actions = new IVotingChainRobotReceiver.ActionWithId[](2);
-    actions[0] = _action(2, IVotingChainRobotReceiver.ProposalAction.PerformSubmitRoots);
-    actions[1] = _action(1, IVotingChainRobotReceiver.ProposalAction.PerformSubmitRoots);
-
-    vm.expectCall(rootsConsumer, abi.encodeCall(IRootsConsumer.requestSubmitRoots, (_hash(1))), 1);
-    robot.onReport('', abi.encode(actions));
-  }
-
   function test_onReport_skipsRevertingAction_andPerformsRest() public {
     _setupProposal(2, IVotingMachineWithProofs.ProposalState.Finished, _hash(2));
     _setupProposal(1, IVotingMachineWithProofs.ProposalState.Finished, _hash(1));
@@ -404,27 +362,7 @@ contract VotingChainRobotReceiverTest is Test {
     assertEq(uint256(logs[0].topics[1]), 2, 'event for wrong proposal');
   }
 
-  function test_onReport_keepsRootsUnrequested_whenRequestReverts() public {
-    _setupProposal(2, IVotingMachineWithProofs.ProposalState.NotCreated, _hash(2));
-    _mockRoots(_hash(2), false, false);
-    vm.mockCallRevert(
-      rootsConsumer,
-      abi.encodeCall(IRootsConsumer.requestSubmitRoots, (_hash(2))),
-      'no LINK'
-    );
-    _setupProposal(1, IVotingMachineWithProofs.ProposalState.Finished, _hash(1));
-    _mockCloseAndSendVote(1);
-
-    IVotingChainRobotReceiver.ActionWithId[]
-      memory actions = new IVotingChainRobotReceiver.ActionWithId[](2);
-    actions[0] = _action(2, IVotingChainRobotReceiver.ProposalAction.PerformSubmitRoots);
-    actions[1] = _action(1, IVotingChainRobotReceiver.ProposalAction.PerformCloseAndSendVote);
-
-    robot.onReport('', abi.encode(actions));
-    assertFalse(robot.isRootsRequested(_hash(2)), 'failed request recorded');
-  }
-
-  /// Roots missing and already requested, and voting not finished: no action is due.
+  /// Roots missing and voting not finished: no action is due.
   function test_fuzz_onReport_revertsWith_NoActionCanBePerformed_whenNothingDue(
     uint8 stateSeed,
     uint8 actionSeed
@@ -435,11 +373,10 @@ contract VotingChainRobotReceiverTest is Test {
       IVotingMachineWithProofs.ProposalState.SentToGovernance
     ];
     IVotingChainRobotReceiver.ProposalAction action = IVotingChainRobotReceiver.ProposalAction(
-      bound(actionSeed, 0, 2)
+      bound(actionSeed, 0, 1)
     );
     _setupProposal(1, states[bound(stateSeed, 0, 2)], _hash(1));
     _mockRoots(_hash(1), false, false);
-    robot.setRootsRequested(_hash(1), true);
 
     vm.expectRevert(IVotingChainRobotReceiver.NoActionCanBePerformed.selector);
     robot.onReport('', _report(1, action));
@@ -464,15 +401,6 @@ contract VotingChainRobotReceiverTest is Test {
       '',
       _report(1, IVotingChainRobotReceiver.ProposalAction.PerformCloseAndSendVote)
     );
-  }
-
-  function test_onReport_revertsWith_NoActionCanBePerformed_whenNotRobotKeeper() public {
-    _setupProposal(1, IVotingMachineWithProofs.ProposalState.NotCreated, _hash(1));
-    _mockRoots(_hash(1), false, false);
-    _mockRobotKeeper(bob);
-
-    vm.expectRevert(IVotingChainRobotReceiver.NoActionCanBePerformed.selector);
-    robot.onReport('', _report(1, IVotingChainRobotReceiver.ProposalAction.PerformSubmitRoots));
   }
 
   function test_onReport_revertsWith_NoActionCanBePerformed_whenEmptyBatch() public {
@@ -539,54 +467,23 @@ contract VotingChainRobotReceiverTest is Test {
     robot.enableAutomation(1);
   }
 
-  function test_retrySubmitRoots_clearsRequest_soRootsAreRequestedAgain() public {
-    _mockProposalIds(0, _ids(1, 1));
-    _setupProposal(1, IVotingMachineWithProofs.ProposalState.NotCreated, _hash(1));
-    _mockRoots(_hash(1), false, false);
-    robot.setRootsRequested(_hash(1), true);
-
-    (bool needed, ) = robot.checkUpkeep('');
-    assertFalse(needed, 'roots requested twice');
-
-    vm.expectEmit(address(robot));
-    emit IVotingChainRobotReceiver.RootsRequestReset(1, _hash(1));
-    vm.prank(guardian);
-    robot.retrySubmitRoots(1);
-
-    assertFalse(robot.isRootsRequested(_hash(1)), 'roots request not cleared');
-    (needed, ) = robot.checkUpkeep('');
-    assertTrue(needed, 'roots not requested again');
-  }
-
-  function test_retrySubmitRoots_revertsWith_RootsNotRequested() public {
-    _setupProposal(1, IVotingMachineWithProofs.ProposalState.NotCreated, _hash(1));
-
-    vm.prank(owner);
-    vm.expectRevert(
-      abi.encodeWithSelector(IVotingChainRobotReceiver.RootsNotRequested.selector, 1)
-    );
-    robot.retrySubmitRoots(1);
-  }
-
-  function test_retrySubmitRoots_revertsWith_OnlyGuardianOrOwnerInvalidCaller() public {
-    vm.prank(bob);
-    vm.expectRevert(
-      abi.encodeWithSelector(IWithGuardian.OnlyGuardianOrOwnerInvalidCaller.selector, bob)
-    );
-    robot.retrySubmitRoots(1);
-  }
-
-  function test_setMaxGasPrice() public {
+  function test_setMaxGasPrice_byOwnerOrGuardian() public {
     vm.expectEmit(address(robot));
     emit IVotingChainRobotReceiver.MaxGasPriceSet(1 gwei);
     vm.prank(owner);
     robot.setMaxGasPrice(1 gwei);
-    assertEq(robot.getMaxGasPrice(), 1 gwei, 'max gas price not updated');
+    assertEq(robot.getMaxGasPrice(), 1 gwei, 'max gas price not updated by owner');
+
+    vm.prank(guardian);
+    robot.setMaxGasPrice(2 gwei);
+    assertEq(robot.getMaxGasPrice(), 2 gwei, 'max gas price not updated by guardian');
   }
 
-  function test_setMaxGasPrice_revertsWhenCalledByGuardian() public {
-    vm.prank(guardian);
-    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, guardian));
+  function test_setMaxGasPrice_revertsWith_OnlyGuardianOrOwnerInvalidCaller() public {
+    vm.prank(bob);
+    vm.expectRevert(
+      abi.encodeWithSelector(IWithGuardian.OnlyGuardianOrOwnerInvalidCaller.selector, bob)
+    );
     robot.setMaxGasPrice(1 gwei);
   }
 
@@ -600,7 +497,7 @@ contract VotingChainRobotReceiverTest is Test {
 
   function test_setMaxGasPrice_revertsWith_GasPriceCapNotSupported() public {
     VotingChainRobotReceiver deployed = _deploy(address(0), 0);
-    vm.prank(owner);
+    vm.prank(guardian);
     vm.expectRevert(IVotingChainRobotReceiver.GasPriceCapNotSupported.selector);
     deployed.setMaxGasPrice(1 gwei);
   }
@@ -632,7 +529,6 @@ contract VotingChainRobotReceiverTest is Test {
       assertEq(config.gasPriceOracle != address(0), isEthereum, 'unexpected gas price oracle');
       assertEq(config.maxGasPrice != 0, isEthereum, 'unexpected max gas price');
       assertTrue(config.votingMachine != address(0), 'voting machine is zero');
-      assertTrue(config.rootsConsumer != address(0), 'roots consumer is zero');
       assertTrue(config.owner != address(0), 'owner is zero');
       assertTrue(config.guardian != address(0), 'guardian is zero');
     }
@@ -642,15 +538,7 @@ contract VotingChainRobotReceiverTest is Test {
     address oracle,
     uint256 maxGasPrice
   ) internal returns (VotingChainRobotReceiverHarness) {
-    return
-      new VotingChainRobotReceiverHarness(
-        votingMachine,
-        rootsConsumer,
-        oracle,
-        maxGasPrice,
-        owner,
-        guardian
-      );
+    return new VotingChainRobotReceiverHarness(votingMachine, oracle, maxGasPrice, owner, guardian);
   }
 
   /// Mocks one page of `size` ids counting down from `firstId`, with `withActions` Finished
@@ -721,18 +609,6 @@ contract VotingChainRobotReceiverTest is Test {
       abi.encodeCall(IDataWarehouse.getStorageRoots, (governance, blockHash)),
       abi.encode(governanceRoot ? keccak256('root') : bytes32(0))
     );
-  }
-
-  function _mockRobotKeeper(address keeper) internal {
-    vm.mockCall(
-      rootsConsumer,
-      abi.encodeCall(IRootsConsumer.getRobotKeeper, ()),
-      abi.encode(keeper)
-    );
-  }
-
-  function _mockRequestSubmitRoots(bytes32 blockHash) internal {
-    vm.mockCall(rootsConsumer, abi.encodeCall(IRootsConsumer.requestSubmitRoots, (blockHash)), '');
   }
 
   function _mockCloseAndSendVote(uint256 id) internal {

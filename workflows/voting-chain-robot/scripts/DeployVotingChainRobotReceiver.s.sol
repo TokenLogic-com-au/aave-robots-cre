@@ -14,18 +14,11 @@ import {VotingChainRobotReceiver} from '../src/VotingChainRobotReceiver.sol';
 contract DeployVotingChainRobotReceiver is Script {
   struct DeployConfig {
     address votingMachine;
-    address rootsConsumer;
     address gasPriceOracle;
     uint256 maxGasPrice;
     address owner;
     address guardian;
   }
-
-  // BGD's RootsConsumers, the ones the live `VotingChainRobotKeeper`s use (not in the
-  // address book): https://github.com/bgd-labs/aave-governance-v3-robots
-  address internal constant ROOTS_CONSUMER_ETHEREUM = 0x2601FF9ac41ca7331e512d6C603c659400e0fC4E;
-  address internal constant ROOTS_CONSUMER_AVALANCHE = 0xcCeb5996cF9976168fdbE6fF88B1d89e1180A0EA;
-  address internal constant ROOTS_CONSUMER_POLYGON = 0x2BdC5C640EB17Ad55f7Dc7a9aE2987C0974B60fc;
 
   // Chainlink "Fast Gas / Gwei" feed, the one the live `GasCappedVotingChainRobotKeeper` uses.
   address internal constant FAST_GAS_ORACLE_ETHEREUM = 0x169E633A2D1E6c10dD91238Ba11c4A708dfEF37C;
@@ -39,7 +32,6 @@ contract DeployVotingChainRobotReceiver is Script {
     vm.startBroadcast();
     VotingChainRobotReceiver receiver = new VotingChainRobotReceiver(
       config.votingMachine,
-      config.rootsConsumer,
       config.gasPriceOracle,
       config.maxGasPrice,
       config.owner,
@@ -49,7 +41,6 @@ contract DeployVotingChainRobotReceiver is Script {
 
     console.log('VotingChainRobotReceiver deployed at:', address(receiver));
     console.log('Voting machine:', config.votingMachine);
-    console.log('Roots consumer:', config.rootsConsumer);
     console.log('Gas price oracle:', config.gasPriceOracle);
     console.log('Max gas price:', config.maxGasPrice);
     console.log('Owner:', config.owner);
@@ -57,14 +48,12 @@ contract DeployVotingChainRobotReceiver is Script {
     return address(receiver);
   }
 
-  /// @dev The chain's voting machine, BGD's RootsConsumer and governance executor / guardian
-  /// as owner / guardian. Only Ethereum caps the gas price, as BGD's keepers do.
+  /// @dev The chain's voting machine, and its governance executor / guardian as owner / guardian. Only Ethereum caps the gas price, as BGD's keepers do.
   function getDeployConfig(uint256 chainId) public pure returns (DeployConfig memory) {
     if (chainId == ChainIds.MAINNET)
       return
         DeployConfig({
           votingMachine: GovernanceV3Ethereum.VOTING_MACHINE,
-          rootsConsumer: ROOTS_CONSUMER_ETHEREUM,
           gasPriceOracle: FAST_GAS_ORACLE_ETHEREUM,
           maxGasPrice: MAX_GAS_PRICE_ETHEREUM,
           owner: GovernanceV3Ethereum.EXECUTOR_LVL_1,
@@ -75,7 +64,6 @@ contract DeployVotingChainRobotReceiver is Script {
       return
         DeployConfig({
           votingMachine: GovernanceV3Avalanche.VOTING_MACHINE,
-          rootsConsumer: ROOTS_CONSUMER_AVALANCHE,
           gasPriceOracle: address(0),
           maxGasPrice: 0,
           owner: GovernanceV3Avalanche.EXECUTOR_LVL_1,
@@ -86,7 +74,6 @@ contract DeployVotingChainRobotReceiver is Script {
       return
         DeployConfig({
           votingMachine: GovernanceV3Polygon.VOTING_MACHINE,
-          rootsConsumer: ROOTS_CONSUMER_POLYGON,
           gasPriceOracle: address(0),
           maxGasPrice: 0,
           owner: GovernanceV3Polygon.EXECUTOR_LVL_1,

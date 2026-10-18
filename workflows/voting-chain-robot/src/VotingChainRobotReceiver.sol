@@ -11,18 +11,17 @@ import {AggregatorInterface} from 'aave-v3-origin/contracts/dependencies/chainli
 
 import {IReceiver} from 'aave-cre/IReceiver.sol';
 import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
-import {IVotingChainRobotReceiver, IRootsConsumer} from './IVotingChainRobotReceiver.sol';
+import {IVotingChainRobotReceiver} from './IVotingChainRobotReceiver.sol';
 
 /// @title VotingChainRobotReceiver
 /// @author Aave Labs
 /// @notice Receives reports from the CRE workflow and automates a Governance V3 voting
-/// machine: requests the storage roots a vote needs, starts votes and closes finished ones.
+/// machine: starts votes once their storage roots are registered and closes finished ones.
 /// Native CRE port of BGD Labs' `VotingChainRobotKeeper` and, with a gas price oracle, of
-/// `GasCappedVotingChainRobotKeeper`.
+/// `GasCappedVotingChainRobotKeeper`, without their storage roots requests: the roots are
+/// registered on the `DataWarehouse` by the governance storage roots CRE workflow.
 /// @dev `onReport` is permissionless, like the keeper's `performUpkeep`: `startProposalVote`
-/// and `closeAndSendVote` are permissionless, and the roots of a block hash are requested
-/// at most once (until `retrySubmitRoots`), only while a proposal waits for them. Requesting
-/// roots needs the robot to be the `ROOTS_CONSUMER`'s robot keeper.
+/// and `closeAndSendVote` are permissionless themselves.
 contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuardian, Rescuable {
   /// @inheritdoc IVotingChainRobotReceiver
   IVotingMachineWithProofs public immutable override VOTING_MACHINE;
@@ -35,9 +34,6 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
 
   /// @inheritdoc IVotingChainRobotReceiver
   address public immutable override GOVERNANCE;
-
-  /// @inheritdoc IVotingChainRobotReceiver
-  IRootsConsumer public immutable override ROOTS_CONSUMER;
 
   /// @inheritdoc IVotingChainRobotReceiver
   AggregatorInterface public immutable override GAS_PRICE_ORACLE;
@@ -54,23 +50,19 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
   // any configuration.
   mapping(uint256 proposalId => bool) internal _disabled;
 
-  mapping(bytes32 blockHash => bool) internal _rootsRequested;
-
   /// @param votingMachine_ The voting machine to automate.
-  /// @param rootsConsumer_ The `RootsConsumer` to request storage roots from.
   /// @param gasPriceOracle_ The network gas price feed capping `checkUpkeep`, or zero for no cap.
   /// @param maxGasPrice_ The initial max gas price, in wei. Must be zero without gas price oracle.
   /// @param initialOwner_ The address of the initial owner.
   /// @param initialGuardian_ The address of the initial guardian.
   constructor(
     address votingMachine_,
-    address rootsConsumer_,
     address gasPriceOracle_,
     uint256 maxGasPrice_,
     address initialOwner_,
     address initialGuardian_
   ) OwnableWithGuardian(initialOwner_, initialGuardian_) {
-    require(votingMachine_ != address(0) && rootsConsumer_ != address(0), InvalidAddress());
+    require(votingMachine_ != address(0), InvalidAddress());
 
     require(gasPriceOracle_ != address(0) || maxGasPrice_ == 0, GasPriceCapNotSupported());
 
@@ -78,7 +70,6 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
     VOTING_STRATEGY = VOTING_MACHINE.VOTING_STRATEGY();
     DATA_WAREHOUSE = VOTING_MACHINE.DATA_WAREHOUSE();
     GOVERNANCE = VOTING_MACHINE.GOVERNANCE();
-    ROOTS_CONSUMER = IRootsConsumer(rootsConsumer_);
     GAS_PRICE_ORACLE = AggregatorInterface(gasPriceOracle_);
 
     if (gasPriceOracle_ != address(0)) {
@@ -102,15 +93,7 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
   }
 
   /// @inheritdoc IVotingChainRobotReceiver
-  function retrySubmitRoots(uint256 proposalId) external onlyOwnerOrGuardian {
-    bytes32 blockHash = _getBlockHash(proposalId);
-    require(_rootsRequested[blockHash], RootsNotRequested(proposalId));
-    _rootsRequested[blockHash] = false;
-    emit RootsRequestReset(proposalId, blockHash);
-  }
-
-  /// @inheritdoc IVotingChainRobotReceiver
-  function setMaxGasPrice(uint256 maxGasPrice) external onlyOwner {
+  function setMaxGasPrice(uint256 maxGasPrice) external onlyOwnerOrGuardian {
     require(address(GAS_PRICE_ORACLE) != address(0), GasPriceCapNotSupported());
     require(maxGasPrice != _maxGasPrice, MaxGasPriceUnchanged(maxGasPrice));
     _maxGasPrice = maxGasPrice;
@@ -176,11 +159,6 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
     return _disabled[proposalId];
   }
 
-  /// @inheritdoc IVotingChainRobotReceiver
-  function isRootsRequested(bytes32 blockHash) external view returns (bool) {
-    return _rootsRequested[blockHash];
-  }
-
   /// @inheritdoc IERC165
   function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
     return
@@ -205,17 +183,13 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
     return count;
   }
 
-  /// @dev The action due on a proposal, by priority: request roots, start the vote, close it.
+  /// @dev The action due on a proposal: start the vote or close it.
   function _getAction(uint256 proposalId) internal view returns (bool, ProposalAction) {
-    if (_disabled[proposalId]) return (false, ProposalAction.PerformSubmitRoots);
+    if (_disabled[proposalId]) return (false, ProposalAction.PerformCreateVote);
 
     IVotingMachineWithProofs.ProposalState state = VOTING_MACHINE.getProposalState(proposalId);
     if (_canCloseAndSendVote(state)) return (true, ProposalAction.PerformCloseAndSendVote);
-
-    bytes32 blockHash = _getBlockHash(proposalId);
-    if (_canSubmitRoots(state, blockHash)) return (true, ProposalAction.PerformSubmitRoots);
-    if (_canCreateVote(state, blockHash)) return (true, ProposalAction.PerformCreateVote);
-    return (false, ProposalAction.PerformSubmitRoots);
+    return (_canCreateVote(state, proposalId), ProposalAction.PerformCreateVote);
   }
 
   /// @dev Performs `a` if it still applies and the proposal is not disabled. Returns whether
@@ -230,17 +204,9 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
       try VOTING_MACHINE.closeAndSendVote(a.id) {} catch {
         return false;
       }
-    } else if (a.action == ProposalAction.PerformCreateVote) {
-      if (!_canCreateVote(state, _getBlockHash(a.id))) return false;
-      try VOTING_MACHINE.startProposalVote(a.id) {} catch {
-        return false;
-      }
     } else {
-      bytes32 blockHash = _getBlockHash(a.id);
-      if (!_canSubmitRoots(state, blockHash)) return false;
-      _rootsRequested[blockHash] = true;
-      try ROOTS_CONSUMER.requestSubmitRoots(blockHash) {} catch {
-        _rootsRequested[blockHash] = false;
+      if (!_canCreateVote(state, a.id)) return false;
+      try VOTING_MACHINE.startProposalVote(a.id) {} catch {
         return false;
       }
     }
@@ -249,26 +215,17 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
     return true;
   }
 
-  /// @dev The vote isn't created, its roots are missing, the robot didn't request them yet and
-  /// is allowed to.
-  function _canSubmitRoots(
+  /// @dev The vote isn't created and every root `startProposalVote` checks is registered for
+  /// the proposal's L1 block hash.
+  function _canCreateVote(
     IVotingMachineWithProofs.ProposalState state,
-    bytes32 blockHash
+    uint256 proposalId
   ) internal view returns (bool) {
     return
       state == IVotingMachineWithProofs.ProposalState.NotCreated &&
-      !_rootsRequested[blockHash] &&
-      !_hasRequiredRoots(blockHash) &&
-      ROOTS_CONSUMER.getRobotKeeper() == address(this);
-  }
-
-  /// @dev The vote isn't created and every root `startProposalVote` checks is registered.
-  function _canCreateVote(
-    IVotingMachineWithProofs.ProposalState state,
-    bytes32 blockHash
-  ) internal view returns (bool) {
-    return
-      state == IVotingMachineWithProofs.ProposalState.NotCreated && _hasRequiredRoots(blockHash);
+      _hasRequiredRoots(
+        VOTING_MACHINE.getProposalVoteConfiguration(proposalId).l1ProposalBlockHash
+      );
   }
 
   /// @dev Voting ended and the result wasn't sent to governance yet.
@@ -287,10 +244,6 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
     } catch {
       return false;
     }
-  }
-
-  function _getBlockHash(uint256 proposalId) internal view returns (bytes32) {
-    return VOTING_MACHINE.getProposalVoteConfiguration(proposalId).l1ProposalBlockHash;
   }
 
   /// @inheritdoc Rescuable

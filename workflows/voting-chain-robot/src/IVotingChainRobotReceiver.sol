@@ -8,28 +8,16 @@ import {AggregatorInterface} from 'aave-v3-origin/contracts/dependencies/chainli
 
 import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
 
-/// @notice BGD's `RootsConsumer` functions used by the robot. It requests the voting
-/// chain's storage roots from a Chainlink node operator, which fetches the Ethereum
-/// proofs from an API and registers them on the `DataWarehouse`.
-interface IRootsConsumer {
-  function requestSubmitRoots(bytes32 blockHash) external;
-
-  function getRobotKeeper() external view returns (address);
-}
-
 /// @title IVotingChainRobotReceiver
-/// @notice Robot automating the Governance V3 voting machine of a voting chain: requests
-/// the storage roots a proposal's vote needs, starts the vote once they are registered and
-/// closes it (sending the result to Ethereum) once voting ends.
-/// @dev `checkData` is unused; `performData` and the `report` are `abi.encode(ActionWithId[])`,
-/// the same encoding as BGD's `VotingChainRobotKeeper`.
+/// @notice Robot automating the Governance V3 voting machine of a voting chain: starts a
+/// proposal's vote once its storage roots are registered and closes it (sending the result to
+/// Ethereum) once voting ends.
+/// @dev `checkData` is unused; `performData` and the `report` are `abi.encode(ActionWithId[])`.
 interface IVotingChainRobotReceiver is IAaveCREReceiver {
-  /// @notice Actions the robot performs on a proposal, by priority.
-  /// PerformSubmitRoots: `ROOTS_CONSUMER.requestSubmitRoots` for the proposal's L1 block hash.
+  /// @notice Actions the robot performs on a proposal.
   /// PerformCreateVote: `VOTING_MACHINE.startProposalVote`.
   /// PerformCloseAndSendVote: `VOTING_MACHINE.closeAndSendVote`.
   enum ProposalAction {
-    PerformSubmitRoots,
     PerformCreateVote,
     PerformCloseAndSendVote
   }
@@ -52,16 +40,11 @@ interface IVotingChainRobotReceiver is IAaveCREReceiver {
   /// @param disabled Whether the proposal is now excluded from automation.
   event ProposalAutomationDisabled(uint256 indexed proposalId, bool disabled);
 
-  /// @notice Emitted when the roots request for a block hash is cleared so it can be retried.
-  /// @param proposalId The proposal whose block hash was cleared.
-  /// @param blockHash The L1 block hash.
-  event RootsRequestReset(uint256 indexed proposalId, bytes32 indexed blockHash);
-
   /// @notice Emitted when the max gas price is updated.
   /// @param maxGasPrice The new max gas price, in wei.
   event MaxGasPriceSet(uint256 maxGasPrice);
 
-  /// @notice Thrown when a constructor address that must be set is zero.
+  /// @notice Thrown when the voting machine passed to the constructor is the zero address.
   error InvalidAddress();
 
   /// @notice Thrown when `onReport` runs but no action in the batch could be performed.
@@ -71,10 +54,6 @@ interface IVotingChainRobotReceiver is IAaveCREReceiver {
   /// @param proposalId The proposal updated.
   /// @param disabled The status that was requested.
   error ProposalStatusUnchanged(uint256 proposalId, bool disabled);
-
-  /// @notice Thrown when retrying the roots request of a proposal whose block hash has none.
-  /// @param proposalId The proposal to retry.
-  error RootsNotRequested(uint256 proposalId);
 
   /// @notice Thrown when setting the max gas price it already has.
   /// @param maxGasPrice The value that was requested.
@@ -95,10 +74,6 @@ interface IVotingChainRobotReceiver is IAaveCREReceiver {
   /// @notice The Ethereum governance whose representatives storage root a vote needs.
   function GOVERNANCE() external view returns (address);
 
-  /// @notice The `RootsConsumer` the robot requests storage roots from. The robot must be its
-  /// robot keeper to request them.
-  function ROOTS_CONSUMER() external view returns (IRootsConsumer);
-
   /// @notice Network gas price feed capping `checkUpkeep`, or zero for no cap.
   function GAS_PRICE_ORACLE() external view returns (AggregatorInterface);
 
@@ -116,12 +91,7 @@ interface IVotingChainRobotReceiver is IAaveCREReceiver {
   /// @param proposalId The proposal to enable. Must be currently disabled.
   function enableAutomation(uint256 proposalId) external;
 
-  /// @notice Clear the roots request of a proposal's block hash so the robot requests the
-  /// roots again, e.g. after the Chainlink node operator failed to fulfill it. Owner or guardian.
-  /// @param proposalId The proposal whose block hash to retry.
-  function retrySubmitRoots(uint256 proposalId) external;
-
-  /// @notice Set the gas price above which `checkUpkeep` reports nothing. Owner-only.
+  /// @notice Set the gas price above which `checkUpkeep` reports nothing. Owner or guardian.
   /// @param maxGasPrice The max gas price, in wei. Must differ from the current one.
   function setMaxGasPrice(uint256 maxGasPrice) external;
 
@@ -135,8 +105,4 @@ interface IVotingChainRobotReceiver is IAaveCREReceiver {
   /// @notice Whether a proposal is excluded from automation.
   /// @param proposalId The proposal to query.
   function isDisabled(uint256 proposalId) external view returns (bool);
-
-  /// @notice Whether the robot already requested the roots of an L1 block hash.
-  /// @param blockHash The L1 block hash to query.
-  function isRootsRequested(bytes32 blockHash) external view returns (bool);
 }
