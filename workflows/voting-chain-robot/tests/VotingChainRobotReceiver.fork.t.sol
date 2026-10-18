@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {Test, Vm} from 'forge-std/Test.sol';
+import {Test} from 'forge-std/Test.sol';
 
-import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
-import {Ownable} from 'openzeppelin-contracts/contracts/access/Ownable.sol';
 import {GovernanceV3Ethereum} from 'aave-address-book/GovernanceV3Ethereum.sol';
 import {GovernanceV3Avalanche} from 'aave-address-book/GovernanceV3Avalanche.sol';
 import {GovernanceV3Polygon} from 'aave-address-book/GovernanceV3Polygon.sol';
-import {AaveV3EthereumAssets} from 'aave-address-book/AaveV3Ethereum.sol';
-import {AaveV3AvalancheAssets} from 'aave-address-book/AaveV3Avalanche.sol';
 import {IVotingMachineWithProofs} from 'aave-address-book/governance-v3/IVotingMachineWithProofs.sol';
 import {IVotingStrategy} from 'aave-address-book/governance-v3/IVotingStrategy.sol';
 import {IDataWarehouse} from 'aave-address-book/governance-v3/IDataWarehouse.sol';
@@ -24,8 +20,8 @@ import {IVotingChainRobotReceiver} from '../src/IVotingChainRobotReceiver.sol';
 import {DeployVotingChainRobotReceiver} from '../scripts/DeployVotingChainRobotReceiver.s.sol';
 
 /// Runs the deploy script on each voting chain and drives a bridged proposal through every
-/// action against the live voting machine, data warehouse and RootsConsumer, comparing
-/// `checkUpkeep` with the live BGD keeper's.
+/// action against the live voting machine and data warehouse, comparing `checkUpkeep` with the
+/// live BGD keeper's.
 contract VotingChainRobotReceiverForkTest is Test {
   struct ChainSetup {
     string rpcAlias;
@@ -34,15 +30,18 @@ contract VotingChainRobotReceiverForkTest is Test {
     address l1VotingPortal;
     address dataWarehouse;
     address votingStrategy;
-    address link;
+  }
+
+  /// `performData` entry of BGD's keeper, whose actions are SubmitRoots (0), CreateVote (1)
+  /// and CloseAndSendVote (2).
+  struct LiveKeeperAction {
+    uint256 id;
+    uint8 action;
   }
 
   address internal constant LIVE_KEEPER_ETHEREUM = 0xbC3210bfff692a5bbDBB068D42Ab4eAF28b01Ee0;
   address internal constant LIVE_KEEPER_AVALANCHE = 0x2cf0fA5b36F0f89a5EA18F835d1375974a7720B8;
   address internal constant LIVE_KEEPER_POLYGON = 0x1180eE41eC15Dd0accC13a1e646B3152bECFf8F6;
-
-  // ERC677 LINK the Polygon RootsConsumer pays its operator with (not the PoS-bridged reserve).
-  address internal constant LINK_POLYGON = 0xb0897686c545045aFc77CF20eC7A532E3120E0F1;
 
   // Block on Avalanche where proposal 531 is being voted on (ends at 1792355163).
   uint256 internal constant AVALANCHE_BLOCK_PROPOSAL_531_ACTIVE = 97735679;
@@ -54,8 +53,7 @@ contract VotingChainRobotReceiverForkTest is Test {
   // Offset from the latest bridged proposal id, to stay clear of the next real ones.
   uint256 internal constant PROPOSAL_ID_OFFSET = 1000;
 
-  bytes32 internal constant OPERATOR_REQUEST_SENT =
-    keccak256('OperatorRequestSent(bytes32,string,uint256)');
+  uint8 internal constant LIVE_KEEPER_SUBMIT_ROOTS = 0;
 
   address internal anyone = makeAddr('anyone');
 
@@ -67,8 +65,7 @@ contract VotingChainRobotReceiverForkTest is Test {
         crossChainController: GovernanceV3Ethereum.CROSS_CHAIN_CONTROLLER,
         l1VotingPortal: GovernanceV3Ethereum.VOTING_PORTAL_ETH_ETH,
         dataWarehouse: address(GovernanceV3Ethereum.DATA_WAREHOUSE),
-        votingStrategy: address(GovernanceV3Ethereum.VOTING_STRATEGY),
-        link: AaveV3EthereumAssets.LINK_UNDERLYING
+        votingStrategy: address(GovernanceV3Ethereum.VOTING_STRATEGY)
       })
     );
   }
@@ -81,8 +78,7 @@ contract VotingChainRobotReceiverForkTest is Test {
         crossChainController: GovernanceV3Avalanche.CROSS_CHAIN_CONTROLLER,
         l1VotingPortal: GovernanceV3Ethereum.VOTING_PORTAL_ETH_AVAX,
         dataWarehouse: address(GovernanceV3Avalanche.DATA_WAREHOUSE),
-        votingStrategy: address(GovernanceV3Avalanche.VOTING_STRATEGY),
-        link: AaveV3AvalancheAssets.LINKe_UNDERLYING
+        votingStrategy: address(GovernanceV3Avalanche.VOTING_STRATEGY)
       })
     );
   }
@@ -95,8 +91,7 @@ contract VotingChainRobotReceiverForkTest is Test {
         crossChainController: GovernanceV3Polygon.CROSS_CHAIN_CONTROLLER,
         l1VotingPortal: GovernanceV3Ethereum.VOTING_PORTAL_ETH_POL,
         dataWarehouse: address(GovernanceV3Polygon.DATA_WAREHOUSE),
-        votingStrategy: address(GovernanceV3Polygon.VOTING_STRATEGY),
-        link: LINK_POLYGON
+        votingStrategy: address(GovernanceV3Polygon.VOTING_STRATEGY)
       })
     );
   }
@@ -155,7 +150,7 @@ contract VotingChainRobotReceiverForkTest is Test {
     uint256 gasPrice = uint256(AggregatorInterface(config.gasPriceOracle).latestAnswer());
     require(gasPrice > 0, 'gas price feed answered 0');
 
-    vm.startPrank(config.owner);
+    vm.startPrank(config.guardian);
     if (robot.getMaxGasPrice() != gasPrice) robot.setMaxGasPrice(gasPrice);
     _assertHasAction(
       _checkUpkeep(robot),
@@ -169,8 +164,8 @@ contract VotingChainRobotReceiverForkTest is Test {
     assertFalse(needed, 'upkeep needed above the gas price cap');
   }
 
-  /// Deploys with the script, then takes a freshly bridged proposal through roots request,
-  /// vote start and close.
+  /// Deploys with the script, then takes a freshly bridged proposal through vote start (once
+  /// its roots are registered) and close.
   function _runLifecycle(ChainSetup memory chain) internal {
     vm.createSelectFork(chain.rpcAlias);
     DeployVotingChainRobotReceiver script = new DeployVotingChainRobotReceiver();
@@ -188,28 +183,11 @@ contract VotingChainRobotReceiverForkTest is Test {
     );
     _assertState(votingMachine, id, IVotingMachineWithProofs.ProposalState.NotCreated);
 
-    // Only the RootsConsumer's robot keeper may request roots.
-    (bool due, ) = _findAction(robot, id);
-    assertFalse(due, 'roots requested before becoming the robot keeper');
-    _becomeRobotKeeper(robot, config.owner, chain.link);
+    assertFalse(_hasAction(robot, id), 'action due before the roots are registered');
 
-    bytes memory performData = _checkUpkeepMatchesLiveKeeper(robot, chain.liveKeeper);
-    _assertHasAction(performData, id, IVotingChainRobotReceiver.ProposalAction.PerformSubmitRoots);
-
-    vm.recordLogs();
-    vm.prank(anyone);
-    robot.onReport('', performData);
-    assertTrue(
-      _requestSent(vm.getRecordedLogs(), address(robot.ROOTS_CONSUMER()), blockHash),
-      'RootsConsumer did not send the operator request'
-    );
-    assertTrue(robot.isRootsRequested(blockHash), 'roots request not recorded');
-    (due, ) = _findAction(robot, id);
-    assertFalse(due, 'roots requested twice');
-
-    // The operator's callback registers the proofs; stand in for it.
+    // The governance storage roots workflow registers the proofs; stand in for it.
     _registerRoots(robot, blockHash);
-    performData = _checkUpkeepMatchesLiveKeeper(robot, chain.liveKeeper);
+    bytes memory performData = _checkUpkeepMatchesLiveKeeper(robot, chain.liveKeeper);
     _assertHasAction(performData, id, IVotingChainRobotReceiver.ProposalAction.PerformCreateVote);
 
     vm.prank(anyone);
@@ -247,9 +225,9 @@ contract VotingChainRobotReceiverForkTest is Test {
       'voting machine differs from the live keeper'
     );
     assertEq(
-      address(robot.ROOTS_CONSUMER()),
-      address(liveKeeper.ROOTS_CONSUMER()),
-      'roots consumer differs from the live keeper'
+      address(robot.DATA_WAREHOUSE()),
+      address(liveKeeper.DATA_WAREHOUSE()),
+      'data warehouse differs from the live keeper'
     );
   }
 
@@ -278,29 +256,6 @@ contract VotingChainRobotReceiverForkTest is Test {
     );
   }
 
-  /// Governance (the RootsConsumer owner) sets the robot as its robot keeper; LINK covers
-  /// one request.
-  function _becomeRobotKeeper(
-    VotingChainRobotReceiver robot,
-    address governanceExecutor,
-    address link
-  ) internal {
-    address consumer = address(robot.ROOTS_CONSUMER());
-    assertEq(
-      Ownable(consumer).owner(),
-      governanceExecutor,
-      'RootsConsumer not owned by governance'
-    );
-
-    vm.prank(governanceExecutor);
-    (bool ok, ) = consumer.call(abi.encodeWithSignature('setRobotKeeper(address)', robot));
-    assertTrue(ok, 'setRobotKeeper failed');
-    assertEq(robot.ROOTS_CONSUMER().getRobotKeeper(), address(robot), 'robot keeper not set');
-
-    (, bytes memory fee) = consumer.staticcall(abi.encodeWithSignature('getFee()'));
-    deal(link, consumer, IERC20(link).balanceOf(consumer) + abi.decode(fee, (uint256)));
-  }
-
   function _registerRoots(VotingChainRobotReceiver robot, bytes32 blockHash) internal {
     vm.mockCall(
       address(robot.VOTING_STRATEGY()),
@@ -314,14 +269,35 @@ contract VotingChainRobotReceiverForkTest is Test {
     );
   }
 
+  /// The robot must pick the same start / close actions as the live keeper. The keeper's roots
+  /// requests are left out, and its action values are one higher (SubmitRoots comes first).
   function _checkUpkeepMatchesLiveKeeper(
     VotingChainRobotReceiver robot,
     address liveKeeper
   ) internal view returns (bytes memory performData) {
     performData = _checkUpkeep(robot);
+    IVotingChainRobotReceiver.ActionWithId[] memory actions = abi.decode(
+      performData,
+      (IVotingChainRobotReceiver.ActionWithId[])
+    );
+
     (bool liveNeeded, bytes memory livePerformData) = IAaveCREReceiver(liveKeeper).checkUpkeep('');
     assertTrue(liveNeeded, 'live keeper sees no upkeep');
-    assertEq(performData, livePerformData, 'performData differs from the live keeper');
+    LiveKeeperAction[] memory liveActions = abi.decode(livePerformData, (LiveKeeperAction[]));
+
+    uint256 matched = 0;
+    for (uint256 i = 0; i < liveActions.length; i++) {
+      if (liveActions[i].action == LIVE_KEEPER_SUBMIT_ROOTS) continue;
+      assertLt(matched, actions.length, 'live keeper has more actions');
+      assertEq(actions[matched].id, liveActions[i].id, 'proposal differs from the live keeper');
+      assertEq(
+        uint256(actions[matched].action) + 1,
+        liveActions[i].action,
+        'action differs from the live keeper'
+      );
+      matched++;
+    }
+    assertEq(matched, actions.length, 'robot has more actions than the live keeper');
   }
 
   function _checkUpkeep(VotingChainRobotReceiver robot) internal view returns (bytes memory) {
@@ -330,21 +306,17 @@ contract VotingChainRobotReceiverForkTest is Test {
     return performData;
   }
 
-  function _findAction(
-    VotingChainRobotReceiver robot,
-    uint256 id
-  ) internal view returns (bool, IVotingChainRobotReceiver.ProposalAction) {
+  function _hasAction(VotingChainRobotReceiver robot, uint256 id) internal view returns (bool) {
     (bool needed, bytes memory performData) = robot.checkUpkeep('');
-    if (needed) {
-      IVotingChainRobotReceiver.ActionWithId[] memory actions = abi.decode(
-        performData,
-        (IVotingChainRobotReceiver.ActionWithId[])
-      );
-      for (uint256 i = 0; i < actions.length; i++) {
-        if (actions[i].id == id) return (true, actions[i].action);
-      }
+    if (!needed) return false;
+    IVotingChainRobotReceiver.ActionWithId[] memory actions = abi.decode(
+      performData,
+      (IVotingChainRobotReceiver.ActionWithId[])
+    );
+    for (uint256 i = 0; i < actions.length; i++) {
+      if (actions[i].id == id) return true;
     }
-    return (false, IVotingChainRobotReceiver.ProposalAction.PerformSubmitRoots);
+    return false;
   }
 
   function _assertHasAction(
@@ -375,21 +347,6 @@ contract VotingChainRobotReceiverForkTest is Test {
       uint256(expected),
       'unexpected proposal state'
     );
-  }
-
-  function _requestSent(
-    Vm.Log[] memory logs,
-    address consumer,
-    bytes32 blockHash
-  ) internal pure returns (bool) {
-    for (uint256 i = 0; i < logs.length; i++) {
-      if (
-        logs[i].emitter == consumer &&
-        logs[i].topics[0] == OPERATOR_REQUEST_SENT &&
-        logs[i].topics[1] == blockHash
-      ) return true;
-    }
-    return false;
   }
 
   function _blockHash() internal view returns (bytes32) {

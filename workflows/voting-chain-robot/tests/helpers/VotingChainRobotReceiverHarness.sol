@@ -9,7 +9,6 @@ import {VotingChainRobotReceiver} from '../../src/VotingChainRobotReceiver.sol';
 contract VotingChainRobotReceiverHarness is VotingChainRobotReceiver {
   constructor(
     address votingMachine_,
-    address rootsConsumer_,
     address gasPriceOracle_,
     uint256 maxGasPrice_,
     address initialOwner_,
@@ -17,7 +16,6 @@ contract VotingChainRobotReceiverHarness is VotingChainRobotReceiver {
   )
     VotingChainRobotReceiver(
       votingMachine_,
-      rootsConsumer_,
       gasPriceOracle_,
       maxGasPrice_,
       initialOwner_,
@@ -29,25 +27,14 @@ contract VotingChainRobotReceiverHarness is VotingChainRobotReceiver {
     return _getAction(proposalId);
   }
 
-  function canSubmitRoots(
-    IVotingMachineWithProofs.ProposalState state,
-    bytes32 blockHash
-  ) external view returns (bool) {
-    return _canSubmitRoots(state, blockHash);
-  }
-
   function canCreateVote(
     IVotingMachineWithProofs.ProposalState state,
-    bytes32 blockHash
+    uint256 proposalId
   ) external view returns (bool) {
-    return _canCreateVote(state, blockHash);
+    return _canCreateVote(state, proposalId);
   }
 
   function hasRequiredRoots(bytes32 blockHash) external view returns (bool) {
     return _hasRequiredRoots(blockHash);
-  }
-
-  function setRootsRequested(bytes32 blockHash, bool requested) external {
-    _rootsRequested[blockHash] = requested;
   }
 }
