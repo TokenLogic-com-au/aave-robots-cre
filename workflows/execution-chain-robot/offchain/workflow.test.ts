@@ -96,7 +96,7 @@ describe('execution-chain-robot workflow', () => {
     ).toBeDefined();
   });
 
-  test('writes one report per payload, in checkUpkeep order, requesting the full quota', () => {
+  test('writes one report per payload, in checkUpkeep order, with the DON default gas limit', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     evmMock.callContract = checkUpkeepMock(true, [7, 9]);
     const estimated: (readonly number[])[] = [];
@@ -114,7 +114,7 @@ describe('execution-chain-robot workflow', () => {
 
     expect(handle(newTestRuntime() as never)).toBe(`executed 7:${TX_HASH}, 9:${TX_HASH}`);
     expect(estimated).toEqual([[7], [9]]);
-    expect(gasLimits).toEqual([MAX_WRITE_GAS, MAX_WRITE_GAS]);
+    expect(gasLimits).toEqual([undefined, undefined]);
     expect(receiver).toBe(RECEIVER);
   });
 

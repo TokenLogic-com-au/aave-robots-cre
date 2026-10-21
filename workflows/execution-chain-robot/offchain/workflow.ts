@@ -28,7 +28,8 @@ type EvmClient = InstanceType<typeof cre.capabilities.EVMClient>;
 
 const EMPTY_CHECK_DATA = '0x' as Hex;
 
-// CRE's ChainWrite.EVM gas quota. A payload above it would fail and be retried every tick.
+// Gas limit the DON gives every write (no gasConfig is sent). A payload above it would fail
+// and be retried every tick.
 export const MAX_WRITE_GAS = 16_777_216n;
 // Forwarder report verification and call overhead on top of `onReport` itself.
 export const WRITE_OVERHEAD_GAS = 250_000n;
@@ -92,7 +93,6 @@ export function executePayload(
     .writeReport(runtime, {
       receiver,
       report: signed,
-      gasConfig: {gasLimit: MAX_WRITE_GAS.toString()},
     })
     .result();
 
