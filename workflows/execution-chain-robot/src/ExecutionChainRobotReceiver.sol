@@ -13,9 +13,8 @@ import {IExecutionChainRobotReceiver} from './IExecutionChainRobotReceiver.sol';
 
 /// @title ExecutionChainRobotReceiver
 /// @author Aave Labs
-/// @notice Receives reports from the CRE workflow and executes Governance V3 payloads whose
-/// timelock has passed. Native CRE port of BGD Labs' `ExecutionChainRobotKeeper` and, with a
-/// gas price oracle set, of `GasCappedExecutionChainRobotKeeper`.
+/// @notice Native CRE port of BGD's `ExecutionChainRobotKeeper` and, with a gas price oracle,
+/// `GasCappedExecutionChainRobotKeeper`: executes Governance V3 payloads past their timelock.
 /// @dev Needs no on-chain role: `PayloadsController.executePayload` is permissionless.
 contract ExecutionChainRobotReceiver is
   IExecutionChainRobotReceiver,
@@ -36,11 +35,10 @@ contract ExecutionChainRobotReceiver is
 
   uint256 internal _maxGasPrice;
 
-  mapping(uint40 payloadId => bool) internal _disabled;
+  mapping(uint256 id => bool) internal _disabled;
 
   /// @param payloadsController_ The PayloadsController whose payloads to execute.
-  /// @param gasPriceOracle_ Chainlink gas price feed capping `checkUpkeep`, or the zero
-  /// address for no cap.
+  /// @param gasPriceOracle_ Chainlink gas price feed, or the zero address for no cap.
   /// @param maxGasPrice_ The initial gas price cap, in wei. Must be 0 without an oracle.
   /// @param initialOwner_ The address of the initial owner.
   /// @param initialGuardian_ The address of the initial guardian.
@@ -63,34 +61,33 @@ contract ExecutionChainRobotReceiver is
   }
 
   /// @inheritdoc IExecutionChainRobotReceiver
-  function disablePayload(uint40 payloadId) external onlyOwnerOrGuardian {
-    require(!_disabled[payloadId], PayloadStatusUnchanged(payloadId, true));
+  function disableAutomation(uint256 id) external onlyOwnerOrGuardian {
+    require(!_disabled[id], AutomationStatusUnchanged(id));
 
-    _disabled[payloadId] = true;
-    emit PayloadDisabled(payloadId, true);
+    _disabled[id] = true;
+    emit AutomationDisabled(id, true);
   }
 
   /// @inheritdoc IExecutionChainRobotReceiver
-  function enablePayload(uint40 payloadId) external onlyOwner {
-    require(_disabled[payloadId], PayloadStatusUnchanged(payloadId, false));
+  function enableAutomation(uint256 id) external onlyOwner {
+    require(_disabled[id], AutomationStatusUnchanged(id));
 
-    _disabled[payloadId] = false;
-    emit PayloadDisabled(payloadId, false);
+    _disabled[id] = false;
+    emit AutomationDisabled(id, false);
   }
 
   /// @inheritdoc IExecutionChainRobotReceiver
   function setMaxGasPrice(uint256 maxGasPrice) external onlyOwnerOrGuardian {
     require(GAS_PRICE_ORACLE != address(0), GasPriceCapNotSupported());
-    require(maxGasPrice != _maxGasPrice, MaxGasPriceUnchanged(maxGasPrice));
+    require(maxGasPrice != _maxGasPrice, MaxGasPriceUnchanged());
 
     _maxGasPrice = maxGasPrice;
     emit MaxGasPriceSet(maxGasPrice);
   }
 
   /// @inheritdoc IAaveCREReceiver
-  /// @dev Same scan as BGD's keeper: walks back from the latest payload and stops after
-  /// `MAX_SKIP` + 1 consecutive non-executable payloads (an executable one resets the count,
-  /// a disabled one is not counted) or once `MAX_ACTIONS` executable payloads are found.
+  /// @dev Walks back from the latest payload until `MAX_SKIP` + 1 consecutive non-executable
+  /// ones (an executable one resets the count, disabled ones aren't counted) or `MAX_ACTIONS` found.
   function checkUpkeep(
     bytes calldata /* checkData */
   ) external view returns (bool upkeepNeeded, bytes memory performData) {
@@ -113,17 +110,15 @@ contract ExecutionChainRobotReceiver is
     }
     if (count == 0) return (false, '');
 
-    // Oldest first, the order BGD's `performUpkeep` executes a batch in.
+    // Oldest first, so payloads of one proposal execute in creation order.
     uint40[] memory payloadIds = new uint40[](count);
     for (uint256 i = 0; i < count; i++) payloadIds[i] = found[count - 1 - i];
     return (true, abi.encode(payloadIds));
   }
 
   /// @inheritdoc IReceiver
-  /// @dev Executes, in order, each payload that is not disabled and still executable.
-  /// Reverts `NoActionCanBePerformed` if none was, so a stale report fails `estimateGas`.
-  /// A reverting `executePayload` reverts the whole report, so the workflow sends one
-  /// payload per report. The gas price cap is only checked in `checkUpkeep`, as in BGD's keeper.
+  /// @dev Permissionless. Executes each payload still executable and not disabled; reverts
+  /// `NoActionCanBePerformed` if none was, so a stale report fails `estimateGas`.
   function onReport(bytes calldata /* metadata */, bytes calldata report) external override {
     uint40[] memory payloadIds = abi.decode(report, (uint40[]));
     bool executed = false;
@@ -139,8 +134,8 @@ contract ExecutionChainRobotReceiver is
   }
 
   /// @inheritdoc IExecutionChainRobotReceiver
-  function isPayloadDisabled(uint40 payloadId) external view returns (bool) {
-    return _disabled[payloadId];
+  function isDisabled(uint256 id) external view returns (bool) {
+    return _disabled[id];
   }
 
   /// @inheritdoc IExecutionChainRobotReceiver
@@ -149,11 +144,10 @@ contract ExecutionChainRobotReceiver is
   }
 
   /// @inheritdoc IExecutionChainRobotReceiver
-  /// @dev Same check as BGD's `GasCappedRobotBase`: the feed's `latestAnswer()` against the
-  /// cap, with no staleness check.
   function isGasPriceInRange() public view returns (bool) {
     if (GAS_PRICE_ORACLE == address(0)) return true;
-    return uint256(AggregatorInterface(GAS_PRICE_ORACLE).latestAnswer()) <= _maxGasPrice;
+    int256 gasPrice = AggregatorInterface(GAS_PRICE_ORACLE).latestAnswer();
+    return gasPrice >= 0 && uint256(gasPrice) <= _maxGasPrice;
   }
 
   /// @inheritdoc IERC165

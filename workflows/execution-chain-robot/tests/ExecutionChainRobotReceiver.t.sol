@@ -117,7 +117,7 @@ contract ExecutionChainRobotReceiverTest is Test {
     _mockPayload(0, state, queuedAt);
     if (disabled) {
       vm.prank(guardian);
-      robot.disablePayload(0);
+      robot.disableAutomation(0);
     }
 
     (bool needed, bytes memory performData) = robot.checkUpkeep('');
@@ -185,23 +185,22 @@ contract ExecutionChainRobotReceiverTest is Test {
     for (uint40 i = 1; i < total; i++) {
       _mockExecutable(i);
       vm.prank(guardian);
-      robot.disablePayload(i);
+      robot.disableAutomation(i);
     }
 
     (, bytes memory performData) = robot.checkUpkeep('');
     assertEq(_decode(performData), _ids(0), 'payload below disabled ones should be found');
   }
 
-  function test_fuzz_checkUpkeep_gasCap(uint256 gasPrice, uint256 maxGasPrice) public {
-    gasPrice = bound(gasPrice, 0, uint256(type(int256).max));
+  function test_fuzz_checkUpkeep_gasCap(int256 gasPrice, uint256 maxGasPrice) public {
     vm.assume(maxGasPrice != MAX_GAS_PRICE);
     vm.prank(owner);
     cappedRobot.setMaxGasPrice(maxGasPrice);
-    _mockGasPrice(int256(gasPrice));
+    _mockGasPrice(gasPrice);
     _mockPayloadsCount(1);
     _mockExecutable(0);
 
-    bool inRange = gasPrice <= maxGasPrice;
+    bool inRange = gasPrice >= 0 && uint256(gasPrice) <= maxGasPrice;
     assertEq(cappedRobot.isGasPriceInRange(), inRange, 'unexpected isGasPriceInRange');
     (bool needed, ) = cappedRobot.checkUpkeep('');
     assertEq(needed, inRange, 'unexpected upkeepNeeded');
@@ -217,8 +216,12 @@ contract ExecutionChainRobotReceiverTest is Test {
     assertTrue(needed, 'upkeep should be needed');
   }
 
-  function test_isGasPriceInRange_false_whenOracleAnswerNegative() public {
-    _mockGasPrice(-1);
+  function test_fuzz_isGasPriceInRange_false_whenAnswerNegative(int256 gasPrice) public {
+    gasPrice = bound(gasPrice, type(int256).min, -1);
+    vm.prank(owner);
+    cappedRobot.setMaxGasPrice(type(uint256).max);
+    _mockGasPrice(gasPrice);
+
     assertFalse(cappedRobot.isGasPriceInRange(), 'negative answer should be out of range');
   }
 
@@ -234,8 +237,8 @@ contract ExecutionChainRobotReceiverTest is Test {
     _mockExecutePayload(0);
     _mockExecutePayload(1);
     vm.startPrank(guardian);
-    if (disabledA) robot.disablePayload(0);
-    if (disabledB) robot.disablePayload(1);
+    if (disabledA) robot.disableAutomation(0);
+    if (disabledB) robot.disableAutomation(1);
     vm.stopPrank();
 
     bool runA = executableA && !disabledA;
@@ -314,66 +317,66 @@ contract ExecutionChainRobotReceiverTest is Test {
     robot.onReport('', abi.encode(_ids(0)));
   }
 
-  function test_disablePayload_byOwner() public {
+  function test_disableAutomation_byOwner() public {
     vm.expectEmit(address(robot));
-    emit IExecutionChainRobotReceiver.PayloadDisabled(7, true);
+    emit IExecutionChainRobotReceiver.AutomationDisabled(7, true);
 
     vm.prank(owner);
-    robot.disablePayload(7);
-    assertTrue(robot.isPayloadDisabled(7), 'payload not disabled');
+    robot.disableAutomation(7);
+    assertTrue(robot.isDisabled(7), 'payload not disabled');
   }
 
-  function test_disablePayload_byGuardian() public {
+  function test_disableAutomation_byGuardian() public {
     vm.prank(guardian);
-    robot.disablePayload(7);
-    assertTrue(robot.isPayloadDisabled(7), 'payload not disabled');
+    robot.disableAutomation(7);
+    assertTrue(robot.isDisabled(7), 'payload not disabled');
   }
 
-  function test_disablePayload_revertsWith_OnlyGuardianOrOwnerInvalidCaller() public {
+  function test_disableAutomation_revertsWith_OnlyGuardianOrOwnerInvalidCaller() public {
     vm.prank(bob);
     vm.expectRevert(
       abi.encodeWithSelector(IWithGuardian.OnlyGuardianOrOwnerInvalidCaller.selector, bob)
     );
-    robot.disablePayload(7);
+    robot.disableAutomation(7);
   }
 
-  function test_disablePayload_revertsWith_PayloadStatusUnchanged() public {
+  function test_disableAutomation_revertsWith_AutomationStatusUnchanged() public {
     vm.startPrank(guardian);
-    robot.disablePayload(7);
+    robot.disableAutomation(7);
     vm.expectRevert(
-      abi.encodeWithSelector(IExecutionChainRobotReceiver.PayloadStatusUnchanged.selector, 7, true)
+      abi.encodeWithSelector(IExecutionChainRobotReceiver.AutomationStatusUnchanged.selector, 7)
     );
-    robot.disablePayload(7);
+    robot.disableAutomation(7);
     vm.stopPrank();
   }
 
-  function test_enablePayload() public {
+  function test_enableAutomation() public {
     vm.prank(guardian);
-    robot.disablePayload(7);
+    robot.disableAutomation(7);
 
     vm.expectEmit(address(robot));
-    emit IExecutionChainRobotReceiver.PayloadDisabled(7, false);
+    emit IExecutionChainRobotReceiver.AutomationDisabled(7, false);
 
     vm.prank(owner);
-    robot.enablePayload(7);
-    assertFalse(robot.isPayloadDisabled(7), 'payload still disabled');
+    robot.enableAutomation(7);
+    assertFalse(robot.isDisabled(7), 'payload still disabled');
   }
 
-  function test_enablePayload_revertsWhenCalledByGuardian() public {
+  function test_enableAutomation_revertsWhenCalledByGuardian() public {
     vm.prank(guardian);
-    robot.disablePayload(7);
+    robot.disableAutomation(7);
 
     vm.prank(guardian);
     vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, guardian));
-    robot.enablePayload(7);
+    robot.enableAutomation(7);
   }
 
-  function test_enablePayload_revertsWith_PayloadStatusUnchanged() public {
+  function test_enableAutomation_revertsWith_AutomationStatusUnchanged() public {
     vm.prank(owner);
     vm.expectRevert(
-      abi.encodeWithSelector(IExecutionChainRobotReceiver.PayloadStatusUnchanged.selector, 7, false)
+      abi.encodeWithSelector(IExecutionChainRobotReceiver.AutomationStatusUnchanged.selector, 7)
     );
-    robot.enablePayload(7);
+    robot.enableAutomation(7);
   }
 
   function test_setMaxGasPrice_byOwner() public {
@@ -404,12 +407,7 @@ contract ExecutionChainRobotReceiverTest is Test {
 
   function test_setMaxGasPrice_revertsWith_MaxGasPriceUnchanged() public {
     vm.prank(guardian);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        IExecutionChainRobotReceiver.MaxGasPriceUnchanged.selector,
-        MAX_GAS_PRICE
-      )
-    );
+    vm.expectRevert(IExecutionChainRobotReceiver.MaxGasPriceUnchanged.selector);
     cappedRobot.setMaxGasPrice(MAX_GAS_PRICE);
   }
 
