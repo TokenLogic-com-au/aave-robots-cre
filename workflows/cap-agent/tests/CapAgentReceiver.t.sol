@@ -45,6 +45,11 @@ contract CapAgentReceiverTest is Test {
       abi.encodeWithSelector(IAgentHub.getAgentCount.selector),
       abi.encode(AGENT_COUNT)
     );
+    vm.mockCall(
+      hub,
+      abi.encodeWithSelector(IAgentHub.isAgentPermissioned.selector),
+      abi.encode(false)
+    );
 
     robot = new CapAgentReceiverHarness(hub, owner, guardian, _ids(AGENT_COUNT));
   }
@@ -145,6 +150,33 @@ contract CapAgentReceiverTest is Test {
 
     vm.expectCall(hub, abi.encodeCall(IAgentHub.check, (_two(0, 2))));
     robot.checkUpkeep('');
+  }
+
+  /// Every combination of agents 0..2 permissioned or not on the hub, with or without this
+  /// robot as a permissioned sender: only agents `execute` would act on reach `check`.
+  function test_fuzz_checkUpkeep_skipsPermissionedAgentsWithoutRobotAsSender(
+    bool[3] memory permissioned,
+    bool[3] memory sender
+  ) public {
+    uint256[] memory buffer = new uint256[](AGENT_COUNT);
+    uint256 count = 0;
+    for (uint256 i = 0; i < AGENT_COUNT; i++) {
+      _mockPermissioned(i, permissioned[i], sender[i]);
+      if (!permissioned[i] || sender[i]) buffer[count++] = i;
+    }
+    uint256[] memory expected = new uint256[](count);
+    for (uint256 i = 0; i < count; i++) expected[i] = buffer[i];
+
+    assertEq(robot.executableAgents(), expected, 'unexpected executable agents');
+
+    if (count == 0) {
+      vm.expectCall(hub, abi.encodeWithSelector(IAgentHub.check.selector), 0);
+    } else {
+      _mockCheck(expected, false, new IAgentHub.ActionData[](0));
+      vm.expectCall(hub, abi.encodeCall(IAgentHub.check, (expected)));
+    }
+    (bool needed, ) = robot.checkUpkeep('');
+    assertFalse(needed, 'upkeep needed without pending updates');
   }
 
   function test_checkUpkeep_capsAtMaxActions() public {
@@ -354,6 +386,19 @@ contract CapAgentReceiverTest is Test {
       hub,
       abi.encodeCall(IAgentHub.check, (agentIds)),
       abi.encode(shouldExecute, actions)
+    );
+  }
+
+  function _mockPermissioned(uint256 agentId, bool permissioned, bool sender) internal {
+    vm.mockCall(
+      hub,
+      abi.encodeCall(IAgentHub.isAgentPermissioned, (agentId)),
+      abi.encode(permissioned)
+    );
+    vm.mockCall(
+      hub,
+      abi.encodeCall(IAgentHub.isPermissionedSender, (agentId, address(robot))),
+      abi.encode(sender)
     );
   }
 

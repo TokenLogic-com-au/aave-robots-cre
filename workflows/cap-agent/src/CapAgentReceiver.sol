@@ -13,10 +13,8 @@ import {ICapAgentReceiver, IAgentHub} from './ICapAgentReceiver.sol';
 /// @title CapAgentReceiver
 /// @author Aave Labs
 /// @notice Receives reports from the CRE workflow and injects pending Risk Oracle updates
-/// through the AgentHub. Native CRE port of BGD Labs' `ChainlinkAgentHub`.
-/// @dev `AgentHub.execute` re-validates every update (expiry, update id, minimum delay, agent
-/// validation, configured market), so `onReport` is permissionless. For an agent the hub marks
-/// as permissioned, this contract must be one of its permissioned senders.
+/// through the AgentHub. Native CRE port of BGD's `ChainlinkAgentHub`.
+/// @dev `onReport` is permissionless: `AgentHub.execute` re-validates every update.
 contract CapAgentReceiver is ICapAgentReceiver, OwnableWithGuardian, Rescuable {
   using EnumerableSet for EnumerableSet.UintSet;
 
@@ -61,7 +59,7 @@ contract CapAgentReceiver is ICapAgentReceiver, OwnableWithGuardian, Rescuable {
   function checkUpkeep(
     bytes calldata /* checkData */
   ) external view returns (bool upkeepNeeded, bytes memory performData) {
-    uint256[] memory agentIds = _enabledAgents.values();
+    uint256[] memory agentIds = _executableAgents();
     if (agentIds.length == 0) return (false, '');
 
     (bool shouldExecute, IAgentHub.ActionData[] memory actions) = AGENT_HUB.check(agentIds);
@@ -71,9 +69,8 @@ contract CapAgentReceiver is ICapAgentReceiver, OwnableWithGuardian, Rescuable {
   }
 
   /// @inheritdoc IReceiver
-  /// @dev Drops actions for agents not enabled on this robot and reverts `NoActionsToExecute`
-  /// if none is left. `AgentHub.execute` reverts `NoActionCanBePerformed` if no update is
-  /// still injectable, so a stale report fails `estimateGas`.
+  /// @dev Drops actions for agents not enabled on this robot. A stale report reverts in
+  /// `AgentHub.execute` (`NoActionCanBePerformed`), so it fails `estimateGas`.
   function onReport(bytes calldata /* metadata */, bytes calldata report) external override {
     IAgentHub.ActionData[] memory actions = _enabledActions(
       abi.decode(report, (IAgentHub.ActionData[]))
@@ -107,8 +104,27 @@ contract CapAgentReceiver is ICapAgentReceiver, OwnableWithGuardian, Rescuable {
     emit AgentStatusUpdated(agentId, true);
   }
 
-  /// @dev Keeps the first `MAX_ACTIONS` market updates, in order. The hub's own `maxBatchSize`
-  /// is unset on the covered chains, so `check` returns every pending update.
+  /// @dev Enabled agents `execute` would act on for this contract: a permissioned agent only
+  /// injects for its permissioned senders, and would otherwise fill `MAX_ACTIONS` with no-ops.
+  function _executableAgents() internal view returns (uint256[] memory) {
+    uint256[] memory enabled = _enabledAgents.values();
+    uint256[] memory buffer = new uint256[](enabled.length);
+    uint256 count = 0;
+
+    for (uint256 i = 0; i < enabled.length; i++) {
+      if (
+        !AGENT_HUB.isAgentPermissioned(enabled[i]) ||
+        AGENT_HUB.isPermissionedSender(enabled[i], address(this))
+      ) buffer[count++] = enabled[i];
+    }
+
+    uint256[] memory agentIds = new uint256[](count);
+    for (uint256 i = 0; i < count; i++) agentIds[i] = buffer[i];
+    return agentIds;
+  }
+
+  /// @dev Keeps the first `MAX_ACTIONS` market updates, in order (the hub's `maxBatchSize` is
+  /// unset, so `check` returns every pending update).
   function _capActions(
     IAgentHub.ActionData[] memory actions
   ) internal pure returns (IAgentHub.ActionData[] memory) {
