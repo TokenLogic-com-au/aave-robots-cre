@@ -145,7 +145,8 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
   /// @inheritdoc IVotingChainRobotReceiver
   function isGasPriceInRange() public view returns (bool) {
     if (address(GAS_PRICE_ORACLE) == address(0)) return true;
-    return uint256(GAS_PRICE_ORACLE.latestAnswer()) <= _maxGasPrice;
+    int256 gasPrice = GAS_PRICE_ORACLE.latestAnswer();
+    return gasPrice >= 0 && uint256(gasPrice) <= _maxGasPrice;
   }
 
   /// @inheritdoc IVotingChainRobotReceiver
