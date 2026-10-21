@@ -110,7 +110,7 @@ contract GovernanceChainRobotReceiverTest is Test {
 
   function test_disableAutomation_byOwnerOrGuardian() public {
     vm.expectEmit(address(robot));
-    emit IGovernanceChainRobotReceiver.ProposalAutomationDisabled(1, true);
+    emit IGovernanceChainRobotReceiver.AutomationDisabled(1, true);
     vm.prank(owner);
     robot.disableAutomation(1);
     assertTrue(robot.isDisabled(1), 'owner did not disable');
@@ -128,15 +128,11 @@ contract GovernanceChainRobotReceiverTest is Test {
     robot.disableAutomation(1);
   }
 
-  function test_disableAutomation_revertsWith_ProposalStatusUnchanged() public {
+  function test_disableAutomation_revertsWith_AutomationStatusUnchanged() public {
     vm.startPrank(guardian);
     robot.disableAutomation(1);
     vm.expectRevert(
-      abi.encodeWithSelector(
-        IGovernanceChainRobotReceiver.ProposalStatusUnchanged.selector,
-        1,
-        true
-      )
+      abi.encodeWithSelector(IGovernanceChainRobotReceiver.AutomationStatusUnchanged.selector, 1)
     );
     robot.disableAutomation(1);
     vm.stopPrank();
@@ -147,7 +143,7 @@ contract GovernanceChainRobotReceiverTest is Test {
     robot.disableAutomation(1);
 
     vm.expectEmit(address(robot));
-    emit IGovernanceChainRobotReceiver.ProposalAutomationDisabled(1, false);
+    emit IGovernanceChainRobotReceiver.AutomationDisabled(1, false);
     vm.prank(owner);
     robot.enableAutomation(1);
     assertFalse(robot.isDisabled(1), 'proposal still disabled');
@@ -165,13 +161,9 @@ contract GovernanceChainRobotReceiverTest is Test {
     robot.enableAutomation(1);
   }
 
-  function test_enableAutomation_revertsWith_ProposalStatusUnchanged() public {
+  function test_enableAutomation_revertsWith_AutomationStatusUnchanged() public {
     vm.expectRevert(
-      abi.encodeWithSelector(
-        IGovernanceChainRobotReceiver.ProposalStatusUnchanged.selector,
-        1,
-        false
-      )
+      abi.encodeWithSelector(IGovernanceChainRobotReceiver.AutomationStatusUnchanged.selector, 1)
     );
     vm.prank(owner);
     robot.enableAutomation(1);
@@ -360,7 +352,7 @@ contract GovernanceChainRobotReceiverTest is Test {
     }
   }
 
-  function test_fuzz_checkUpkeep_stopsAfterMaxSkipFinalProposals(uint256 finals) public {
+  function test_fuzz_checkUpkeep_stopsAfterMoreThanMaxSkipFinalProposals(uint256 finals) public {
     finals = bound(finals, 0, robot.MAX_SKIP() + 5);
     _activatable(0);
     for (uint256 i = 1; i <= finals; i++) _final(i);
@@ -472,20 +464,53 @@ contract GovernanceChainRobotReceiverTest is Test {
     assertEq(uint8(_state(1)), uint8(IGovernanceCore.State.Executed), 'not executed');
   }
 
-  function test_onReport_catchesRevert_andPerformsRest() public {
+  function test_onReport_emitsActionFailed_andPerformsRest() public {
     _activatable(0);
     _activatable(1);
     gov.setRevertOn(0, true);
     (, bytes memory performData) = robot.checkUpkeep('');
 
-    vm.recordLogs();
+    vm.expectEmit(address(robot));
+    emit IGovernanceChainRobotReceiver.ActionFailed(
+      0,
+      IGovernanceChainRobotReceiver.ProposalAction.PerformActivateVoting,
+      abi.encodeWithSignature('Error(string)', 'mock revert')
+    );
+    vm.expectEmit(address(robot));
+    emit IGovernanceChainRobotReceiver.ActionSucceeded(
+      1,
+      IGovernanceChainRobotReceiver.ProposalAction.PerformActivateVoting
+    );
     vm.prank(anyone);
     robot.onReport('', performData);
 
-    Vm.Log[] memory logs = _robotLogs(vm.getRecordedLogs());
-    assertEq(logs.length, 1, 'expected a single ActionSucceeded');
-    assertEq(uint256(logs[0].topics[1]), 1, 'event for the wrong proposal');
+    assertEq(uint8(_state(0)), uint8(IGovernanceCore.State.Created), 'reverting proposal changed');
     assertEq(uint8(_state(1)), uint8(IGovernanceCore.State.Active), 'voting not activated');
+  }
+
+  function test_fuzz_onReport_emitsActionFailed_forEveryAction(uint8 rawAction) public {
+    IGovernanceChainRobotReceiver.ProposalAction action = IGovernanceChainRobotReceiver
+      .ProposalAction(bound(rawAction, 0, 2));
+    if (action == IGovernanceChainRobotReceiver.ProposalAction.PerformCancel) _cancellable(0);
+    else if (action == IGovernanceChainRobotReceiver.ProposalAction.PerformExecute) _executable(0);
+    else _activatable(0);
+    _activatable(1);
+    gov.setRevertOn(0, true);
+
+    vm.expectEmit(address(robot));
+    emit IGovernanceChainRobotReceiver.ActionFailed(
+      0,
+      action,
+      abi.encodeWithSignature('Error(string)', 'mock revert')
+    );
+    vm.prank(anyone);
+    robot.onReport(
+      '',
+      _encode(
+        _action(1, IGovernanceChainRobotReceiver.ProposalAction.PerformActivateVoting),
+        _action(0, action)
+      )
+    );
   }
 
   function test_onReport_revertsWith_NoActionCanBePerformed_whenAllRevert() public {

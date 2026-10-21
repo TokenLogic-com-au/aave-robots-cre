@@ -6,6 +6,7 @@ import {IGovernanceCore} from 'aave-address-book/governance-v3/IGovernanceCore.s
 import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
 
 /// @title IGovernanceChainRobotReceiver
+/// @author Aave Labs
 /// @notice Robot that moves Aave Governance V3 proposals forward on the governance chain:
 /// activates voting once the cooldown has passed, executes queued proposals and cancels
 /// proposals whose creator lost the proposition power.
@@ -32,10 +33,16 @@ interface IGovernanceChainRobotReceiver is IAaveCREReceiver {
   /// @param action The action performed.
   event ActionSucceeded(uint256 indexed id, ProposalAction indexed action);
 
+  /// @notice Emitted when a Governance call reverts inside `onReport`.
+  /// @param id The proposal id.
+  /// @param action The action attempted.
+  /// @param reason The revert data.
+  event ActionFailed(uint256 indexed id, ProposalAction action, bytes reason);
+
   /// @notice Emitted when a proposal is excluded from or included back into automation.
   /// @param id The proposal id.
   /// @param disabled Whether the proposal is now excluded from automation.
-  event ProposalAutomationDisabled(uint256 indexed id, bool disabled);
+  event AutomationDisabled(uint256 indexed id, bool disabled);
 
   /// @notice Emitted when the maximum gas price is updated.
   /// @param maxGasPrice The new maximum gas price, in wei.
@@ -49,8 +56,7 @@ interface IGovernanceChainRobotReceiver is IAaveCREReceiver {
 
   /// @notice Thrown when disabling / enabling a proposal that already has that status.
   /// @param id The proposal id.
-  /// @param disabled The status that was requested.
-  error ProposalStatusUnchanged(uint256 id, bool disabled);
+  error AutomationStatusUnchanged(uint256 id);
 
   /// @notice Thrown when setting the maximum gas price to its current value.
   error MaxGasPriceUnchanged();
@@ -64,8 +70,8 @@ interface IGovernanceChainRobotReceiver is IAaveCREReceiver {
   /// @notice Max actions returned by a single `checkUpkeep`.
   function MAX_ACTIONS() external pure returns (uint256);
 
-  /// @notice Consecutive proposals in a final state after which `checkUpkeep` stops scanning
-  /// back from the latest proposal.
+  /// @notice `checkUpkeep` stops scanning back once more than `MAX_SKIP` consecutive
+  /// proposals are in a final state.
   function MAX_SKIP() external pure returns (uint256);
 
   /// @notice Exclude a proposal from automation. Owner or guardian.

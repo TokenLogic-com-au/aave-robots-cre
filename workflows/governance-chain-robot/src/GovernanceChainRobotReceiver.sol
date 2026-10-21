@@ -16,9 +16,8 @@ import {IGovernanceChainRobotReceiver} from './IGovernanceChainRobotReceiver.sol
 /// @notice Receives reports from the CRE workflow and activates voting, executes or cancels
 /// Aave Governance V3 proposals. Native CRE port of BGD Labs'
 /// `GasCappedGovernanceChainRobotKeeper`.
-/// @dev Needs no on-chain role: `activateVoting`, `executeProposal` and `cancelProposal` (once
-/// the creator lost the proposition power) are permissionless, and none of them takes a fee
-/// from the caller (a.DI fees are paid by the CrossChainController).
+/// @dev Needs no on-chain role or funds: the Governance calls are permissionless and not payable
+/// (the CrossChainController pays the a.DI fees).
 contract GovernanceChainRobotReceiver is
   IGovernanceChainRobotReceiver,
   OwnableWithGuardian,
@@ -61,16 +60,16 @@ contract GovernanceChainRobotReceiver is
 
   /// @inheritdoc IGovernanceChainRobotReceiver
   function disableAutomation(uint256 id) external onlyOwnerOrGuardian {
-    require(!_disabled[id], ProposalStatusUnchanged(id, true));
+    require(!_disabled[id], AutomationStatusUnchanged(id));
     _disabled[id] = true;
-    emit ProposalAutomationDisabled(id, true);
+    emit AutomationDisabled(id, true);
   }
 
   /// @inheritdoc IGovernanceChainRobotReceiver
   function enableAutomation(uint256 id) external onlyOwner {
-    require(_disabled[id], ProposalStatusUnchanged(id, false));
+    require(_disabled[id], AutomationStatusUnchanged(id));
     _disabled[id] = false;
-    emit ProposalAutomationDisabled(id, false);
+    emit AutomationDisabled(id, false);
   }
 
   /// @inheritdoc IGovernanceChainRobotReceiver
@@ -81,10 +80,8 @@ contract GovernanceChainRobotReceiver is
   }
 
   /// @inheritdoc IAaveCREReceiver
-  /// @dev Same scan as `GovernanceChainRobotKeeper`: walks back from the latest proposal and
-  /// stops after `MAX_SKIP` consecutive proposals in a final state (the count resets on every
-  /// non-final one; disabled proposals neither count nor reset it) or once `MAX_ACTIONS` are
-  /// found. Per proposal, cancel takes precedence over activate voting, then execute.
+  /// @dev Walks back from the latest proposal until `MAX_SKIP + 1` consecutive final proposals
+  /// (disabled ones are ignored) or `MAX_ACTIONS` actions. Cancel wins over activate, then execute.
   function checkUpkeep(
     bytes calldata /* checkData */
   ) external view returns (bool upkeepNeeded, bytes memory performData) {
@@ -122,10 +119,8 @@ contract GovernanceChainRobotReceiver is
   }
 
   /// @inheritdoc IReceiver
-  /// @dev Performs the actions oldest proposal first, skipping disabled proposals and actions
-  /// that no longer apply, and catches a reverting Governance call so one proposal can't block
-  /// the rest of the batch. Reverts `NoActionCanBePerformed` if nothing was performed, so a
-  /// stale report fails `estimateGas`. The gas price cap only gates `checkUpkeep`.
+  /// @dev Oldest proposal first; skips disabled or stale actions and logs a reverting call as
+  /// `ActionFailed`. Reverts `NoActionCanBePerformed` if nothing was performed.
   function onReport(bytes calldata /* metadata */, bytes calldata report) external override {
     ActionWithId[] memory actions = abi.decode(report, (ActionWithId[]));
     bool performed = false;
@@ -133,9 +128,12 @@ contract GovernanceChainRobotReceiver is
     for (uint256 i = actions.length; i > 0; i--) {
       ActionWithId memory a = actions[i - 1];
       if (_disabled[a.id] || !_canPerform(GOVERNANCE.getProposal(a.id), a.action)) continue;
-      if (_perform(a)) {
+      (bool success, bytes memory reason) = address(GOVERNANCE).call(_calldata(a));
+      if (success) {
         performed = true;
         emit ActionSucceeded(a.id, a.action);
+      } else {
+        emit ActionFailed(a.id, a.action, reason);
       }
     }
     require(performed, NoActionCanBePerformed());
@@ -165,26 +163,14 @@ contract GovernanceChainRobotReceiver is
       interfaceId == type(IERC165).interfaceId;
   }
 
-  function _perform(ActionWithId memory a) internal returns (bool) {
+  function _calldata(ActionWithId memory a) internal pure returns (bytes memory) {
     if (a.action == ProposalAction.PerformCancel) {
-      try GOVERNANCE.cancelProposal(a.id) {
-        return true;
-      } catch {
-        return false;
-      }
+      return abi.encodeCall(IGovernanceCore.cancelProposal, (a.id));
     }
     if (a.action == ProposalAction.PerformActivateVoting) {
-      try GOVERNANCE.activateVoting(a.id) {
-        return true;
-      } catch {
-        return false;
-      }
+      return abi.encodeCall(IGovernanceCore.activateVoting, (a.id));
     }
-    try GOVERNANCE.executeProposal(a.id) {
-      return true;
-    } catch {
-      return false;
-    }
+    return abi.encodeCall(IGovernanceCore.executeProposal, (a.id));
   }
 
   function _canPerform(
@@ -201,8 +187,7 @@ contract GovernanceChainRobotReceiver is
     return uint8(state) > uint8(IGovernanceCore.State.Queued);
   }
 
-  /// @dev Created, past the access level's cooldown. Doesn't check the creator's power:
-  /// `checkUpkeep` tries a cancel first.
+  /// @dev Created and past the cooldown. The creator's power is covered by the cancel check.
   function _canVotingBeActivated(
     IGovernanceCore.Proposal memory proposal
   ) internal view returns (bool) {
@@ -221,9 +206,8 @@ contract GovernanceChainRobotReceiver is
       block.timestamp >= proposal.queuingTime + GOVERNANCE.COOLDOWN_PERIOD();
   }
 
-  /// @dev Not yet executed (nor in a later state) and the creator's proposition power is not
-  /// above the access level's minimum, the condition under which `cancelProposal` is open to
-  /// anyone. BGD's keeper uses a strict `<`, missing the case where both are equal.
+  /// @dev Open and the creator's power is not above the minimum, when `cancelProposal` is open
+  /// to anyone (BGD's keeper uses `<`, missing equality).
   function _canProposalBeCancelled(
     IGovernanceCore.Proposal memory proposal
   ) internal view returns (bool) {

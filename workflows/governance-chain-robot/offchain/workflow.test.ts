@@ -1,5 +1,6 @@
 import {describe, expect} from 'bun:test';
 import {TxStatus, getNetwork} from '@chainlink/cre-sdk';
+import {EVM_PB} from '@chainlink/cre-sdk/pb';
 import {EvmMock, newTestRuntime, test} from '@chainlink/cre-sdk/test';
 import {bytesToHex, decodeFunctionData, hexToBytes, type Hex} from 'viem';
 
@@ -9,7 +10,16 @@ import {
   type CallContractInput,
 } from '../../shared/offchain/testing/mocks';
 import {IAaveCREReceiverABI} from '../../shared/offchain/abi/IAaveCREReceiver';
-import {MAX_WRITE_GAS, createReceiverHandler, initWorkflow} from './workflow';
+import {
+  MAX_WRITE_GAS,
+  WRITE_OVERHEAD_GAS,
+  createReceiverHandler,
+  fitsWriteQuota,
+  initWorkflow,
+} from './workflow';
+
+// Largest estimate with estimate * 64 / 63 + WRITE_OVERHEAD_GAS <= MAX_WRITE_GAS.
+const MAX_ESTIMATE = 16_268_979n;
 
 const CHAIN_NAME = 'ethereum-mainnet';
 const CHAIN_SELECTOR = getNetwork({
@@ -112,7 +122,7 @@ describe('governance chain robot workflow', () => {
   test('returns "submit skipped" and logs when the estimate exceeds the write quota', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     evmMock.callContract = checkUpkeepMock(true);
-    evmMock.estimateGas = () => ({gas: MAX_WRITE_GAS + 1n});
+    evmMock.estimateGas = () => ({gas: MAX_ESTIMATE + 1n});
     let written = false;
     evmMock.writeReport = () => {
       written = true;
@@ -125,10 +135,10 @@ describe('governance chain robot workflow', () => {
     expect(runtime.getLogs().find((l) => l.includes('exceeds max write gas'))).toBeDefined();
   });
 
-  test('submits when the estimate equals the write quota', () => {
+  test('submits at the largest estimate that fits the write quota', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     evmMock.callContract = checkUpkeepMock(true);
-    evmMock.estimateGas = () => ({gas: MAX_WRITE_GAS});
+    evmMock.estimateGas = () => ({gas: MAX_ESTIMATE});
     evmMock.writeReport = () => ({txStatus: TxStatus.SUCCESS, txHash: hexToBytes(TX_HASH)});
 
     expect(handle(newTestRuntime() as never)).toBe(`actions performed, tx=${TX_HASH}`);
@@ -163,6 +173,23 @@ describe('governance chain robot workflow', () => {
     expect(runtime.getLogs().find((l) => l.includes('writeReport status='))).toBeDefined();
   });
 
+  test('returns "submit skipped" and logs when onReport reverted in the forwarder tx', () => {
+    const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
+    evmMock.callContract = checkUpkeepMock(true);
+    evmMock.estimateGas = () => ({gas: 100_000n});
+    evmMock.writeReport = () => ({
+      txStatus: TxStatus.SUCCESS,
+      txHash: hexToBytes(TX_HASH),
+      receiverContractExecutionStatus: EVM_PB.ReceiverContractExecutionStatus.REVERTED,
+    });
+
+    const runtime = newTestRuntime();
+    expect(handle(runtime as never)).toBe('submit skipped');
+    expect(
+      runtime.getLogs().find((l) => l.includes(`onReport reverted in the forwarder tx ${TX_HASH}`)),
+    ).toBeDefined();
+  });
+
   test('returns "submit skipped" and logs when writeReport has no tx hash', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     evmMock.callContract = checkUpkeepMock(true);
@@ -177,6 +204,14 @@ describe('governance chain robot workflow', () => {
   test('returns "Network not found" for an unknown chain', () => {
     const badHandle = createReceiverHandler({...NETWORK, chainName: 'made-up-chain'});
     expect(badHandle(newTestRuntime() as never)).toBe('Network not found');
+  });
+});
+
+describe('fitsWriteQuota', () => {
+  test('adds the forwarder overhead and the withheld 1/64 to the estimate', () => {
+    expect(fitsWriteQuota(MAX_ESTIMATE)).toBe(true);
+    expect(fitsWriteQuota(MAX_ESTIMATE + 1n)).toBe(false);
+    expect(fitsWriteQuota(MAX_WRITE_GAS - WRITE_OVERHEAD_GAS)).toBe(false);
   });
 });
 
