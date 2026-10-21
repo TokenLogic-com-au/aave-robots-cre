@@ -41,6 +41,9 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
   /// @inheritdoc IVotingChainRobotReceiver
   uint256 public constant override PAGE_SIZE = 20;
 
+  /// @inheritdoc IVotingChainRobotReceiver
+  uint256 public constant override MAX_PAGES = 5;
+
   uint256 internal _maxGasPrice;
 
   // A denylist: every new proposal is automated without configuration.
@@ -99,8 +102,8 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
   }
 
   /// @inheritdoc IAaveCREReceiver
-  /// @dev Pages through the proposals from the latest backwards, reading the next page only
-  /// while the current one had an action. Nothing while the gas price is above the cap.
+  /// @dev Pages through the proposals from the latest backwards while pages are full, up to
+  /// `MAX_PAGES` or `MAX_ACTIONS`. Nothing while the gas price is above the cap.
   function checkUpkeep(
     bytes calldata /* checkData */
   ) external view returns (bool upkeepNeeded, bytes memory performData) {
@@ -108,14 +111,11 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
 
     ActionWithId[] memory buffer = new ActionWithId[](MAX_ACTIONS);
     uint256 count = 0;
-    uint256 countBefore;
-    uint256 skip = 0;
+    bool fullPage = true;
 
-    do {
-      countBefore = count;
-      count = _collectActions(skip, buffer, count);
-      skip += PAGE_SIZE;
-    } while (count > countBefore && count < MAX_ACTIONS);
+    for (uint256 page = 0; page < MAX_PAGES && fullPage && count < MAX_ACTIONS; page++) {
+      (count, fullPage) = _collectActions(page * PAGE_SIZE, buffer, count);
+    }
 
     if (count == 0) return (false, '');
 
@@ -162,19 +162,20 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
       interfaceId == type(IERC165).interfaceId;
   }
 
-  /// @dev Appends one page's actions to `actions` from index `count`; returns the new count.
+  /// @dev Appends one page's actions to `actions` from index `count`; returns the new count
+  /// and whether the page was full.
   function _collectActions(
     uint256 skip,
     ActionWithId[] memory actions,
     uint256 count
-  ) internal view returns (uint256) {
+  ) internal view returns (uint256, bool) {
     uint256[] memory proposalIds = VOTING_MACHINE.getProposalsVoteConfigurationIds(skip, PAGE_SIZE);
 
     for (uint256 i = 0; i < proposalIds.length && count < MAX_ACTIONS; i++) {
       (bool due, ProposalAction action) = _getAction(proposalIds[i]);
       if (due) actions[count++] = ActionWithId(proposalIds[i], action);
     }
-    return count;
+    return (count, proposalIds.length == PAGE_SIZE);
   }
 
   /// @dev The action due on a proposal: start the vote or close it.

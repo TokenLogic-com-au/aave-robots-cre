@@ -28,8 +28,9 @@ voting-chain-robot/
 `VotingChainRobotReceiver` implements [`IAaveCREReceiver`](../shared/src/IAaveCREReceiver.sol):
 
 - `checkUpkeep(_) → (needed, ActionWithId[])` — reads the proposals with a vote
-  configuration from the latest backwards, `PAGE_SIZE` (20) at a time, reading the next
-  page only while the current one had an action, up to `MAX_ACTIONS` (5). Per proposal not
+  configuration from the latest backwards, `PAGE_SIZE` (20) at a time, while pages are
+  full, up to `MAX_PAGES` (5) pages and `MAX_ACTIONS` (5) actions. Five pages cover the
+  last 100 proposals (over a year on Avalanche) for ~0.9M gas measured. Per proposal not
   disabled: `PerformCreateVote` when the vote isn't created and the roots of its L1 block
   hash are registered (`hasRequiredRoots` plus the governance representatives root, as
   `startProposalVote` checks), `PerformCloseAndSendVote` when voting ended and the result
@@ -57,8 +58,9 @@ proposal whose roots are missing waits for them.
 - No roots requests (`RootsConsumer`, `retrySubmitRoots`). `ProposalAction` values are one
   lower than the keeper's.
 - More than 5 due actions return the first five; the keeper's `checkUpkeep` reverts.
-- Paging stops at the first page without an action; the keeper kept paging on pages with
-  only roots requests, which don't exist here.
+- Paging continues while pages are full (bounded by `MAX_PAGES`), so a finished vote behind
+  20 newer proposals without actions is still closed; the keeper only read the next page
+  after a page with an action.
 - `onReport` skips disabled proposals and catches reverting actions instead of reverting
   the batch.
 - One contract for both keepers; `setMaxGasPrice` is owner or guardian.
@@ -71,8 +73,9 @@ proposal whose roots are missing waits for them.
   `AutomationStatusUnchanged` when the status doesn't change and emit
   `AutomationDisabled(id, disabled)`. A denylist: new proposals need no configuration.
 - `setMaxGasPrice(maxGasPrice)` — owner or guardian. Reverts `MaxGasPriceUnchanged` for the
-  current value and `GasPriceCapNotSupported` without oracle. The constructor requires a
-  non-zero cap with an oracle and none without.
+  current value and `GasPriceCapNotSupported` without oracle. `setMaxGasPrice(0)` is the
+  guardian's emergency pause on Ethereum; the constructor rejects 0 with an oracle (and any
+  cap without) only to catch deploy mistakes.
 - The contract is `Rescuable`; the owner is the rescue guardian.
 
 ## Testing

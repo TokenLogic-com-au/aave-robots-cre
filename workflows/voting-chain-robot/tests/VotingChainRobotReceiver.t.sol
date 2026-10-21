@@ -107,6 +107,7 @@ contract VotingChainRobotReceiverTest is Test {
   function test_constants() public view {
     assertEq(robot.MAX_ACTIONS(), 5, 'unexpected MAX_ACTIONS');
     assertEq(robot.PAGE_SIZE(), 20, 'unexpected PAGE_SIZE');
+    assertEq(robot.MAX_PAGES(), 5, 'unexpected MAX_PAGES');
   }
 
   function test_supportsInterface() public view {
@@ -241,7 +242,7 @@ contract VotingChainRobotReceiverTest is Test {
     }
   }
 
-  function test_checkUpkeep_readsNextPage_whenPageHadActions() public {
+  function test_checkUpkeep_collectsActionsAcrossPages() public {
     uint256 pageSize = robot.PAGE_SIZE();
     _setupPage(0, pageSize * 2, pageSize, 1);
     _setupPage(pageSize, pageSize, pageSize, 1);
@@ -256,10 +257,27 @@ contract VotingChainRobotReceiverTest is Test {
     assertEq(actions[1].id, pageSize, 'unexpected second page action');
   }
 
-  function test_checkUpkeep_stopsPaging_whenPageHadNoAction() public {
+  function test_checkUpkeep_reportsFinishedProposal_behindFullPageWithoutActions() public {
     uint256 pageSize = robot.PAGE_SIZE();
     _setupPage(0, pageSize * 2, pageSize, 0);
     _setupPage(pageSize, pageSize, pageSize, 1);
+    _mockProposalIds(pageSize * 2, new uint256[](0));
+
+    (bool needed, bytes memory performData) = robot.checkUpkeep('');
+    assertTrue(needed, 'finished proposal behind a full page not reported');
+
+    IVotingChainRobotReceiver.ActionWithId[] memory actions = _decode(performData);
+    assertEq(actions.length, 1, 'unexpected number of actions');
+    _assertActionWithId(
+      actions[0],
+      pageSize,
+      IVotingChainRobotReceiver.ProposalAction.PerformCloseAndSendVote
+    );
+  }
+
+  function test_checkUpkeep_stopsPaging_afterPartialPage() public {
+    uint256 pageSize = robot.PAGE_SIZE();
+    _setupPage(0, pageSize - 1, pageSize - 1, 0);
 
     vm.expectCall(
       votingMachine,
@@ -270,7 +288,28 @@ contract VotingChainRobotReceiverTest is Test {
       0
     );
     (bool needed, ) = robot.checkUpkeep('');
-    assertFalse(needed, 'older pages are only read after a page with actions');
+    assertFalse(needed, 'upkeep needed without actions');
+  }
+
+  function test_checkUpkeep_readsAtMostMaxPages() public {
+    uint256 pageSize = robot.PAGE_SIZE();
+    uint256 maxPages = robot.MAX_PAGES();
+    uint256 total = pageSize * (maxPages + 1);
+    for (uint256 page = 0; page < maxPages; page++) {
+      _setupPage(page * pageSize, total - page * pageSize, pageSize, 0);
+    }
+    _setupPage(maxPages * pageSize, pageSize, pageSize, 1);
+
+    vm.expectCall(
+      votingMachine,
+      abi.encodeCall(
+        IVotingMachineWithProofs.getProposalsVoteConfigurationIds,
+        (maxPages * pageSize, pageSize)
+      ),
+      0
+    );
+    (bool needed, ) = robot.checkUpkeep('');
+    assertFalse(needed, 'read past MAX_PAGES');
   }
 
   function test_checkUpkeep_skipsDisabledProposals() public {

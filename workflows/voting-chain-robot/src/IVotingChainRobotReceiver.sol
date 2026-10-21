@@ -84,6 +84,9 @@ interface IVotingChainRobotReceiver is IAaveCREReceiver {
   /// @notice Number of proposal ids read per page, from the latest backwards.
   function PAGE_SIZE() external pure returns (uint256);
 
+  /// @notice Max pages read by a single `checkUpkeep`, bounding its gas.
+  function MAX_PAGES() external pure returns (uint256);
+
   /// @notice Exclude a proposal from automation. Owner or guardian.
   /// @param id The proposal id. Must not be disabled already.
   function disableAutomation(uint256 id) external;
