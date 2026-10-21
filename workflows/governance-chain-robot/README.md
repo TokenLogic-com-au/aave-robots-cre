@@ -65,7 +65,9 @@ fees), so the robot needs no role or funds.
   `AutomationStatusUnchanged` when the status doesn't change and emit
   `AutomationDisabled(id, disabled)`. New proposals are automated by default.
 - `setMaxGasPrice(maxGasPrice)` — owner or guardian, so the cap can be tuned without a vote.
-  Reverts `MaxGasPriceUnchanged`; emits `MaxGasPriceSet`.
+  Reverts `MaxGasPriceUnchanged`; emits `MaxGasPriceSet`. `setMaxGasPrice(0)` is the
+  guardian's emergency pause: the constructor rejects 0 to catch deploy mistakes, the setter
+  allows it on purpose.
 - Owner `EXECUTOR_LVL_1`, guardian `GOVERNANCE_GUARDIAN`. `Rescuable`, with the owner as
   rescue guardian.
 

@@ -22,8 +22,7 @@ type EvmClient = InstanceType<typeof cre.capabilities.EVMClient>;
 // The receiver holds the Governance immutable and scans the proposals itself.
 const EMPTY_CHECK_DATA = '0x' as Hex;
 
-// Gas quota per CRE write. Writes request all of it rather than the estimate: `onReport` catches
-// reverting calls, so a batch estimate can leave one action out of gas while another succeeds.
+// Gas quota per CRE write, which the DON uses as the gas limit when no gasConfig is sent.
 export const MAX_WRITE_GAS = 16_777_216n;
 
 // Forwarder report verification and call overhead on top of the `onReport` estimate.
@@ -81,13 +80,7 @@ export function writeReport(
     })
     .result();
 
-  const result = evmClient
-    .writeReport(runtime, {
-      receiver,
-      report,
-      gasConfig: {gasLimit: MAX_WRITE_GAS.toString()},
-    })
-    .result();
+  const result = evmClient.writeReport(runtime, {receiver, report}).result();
 
   if (result.txStatus !== TxStatus.SUCCESS) {
     runtime.log(
@@ -116,6 +109,8 @@ export function runForNetwork(
   const performData = shouldSubmit(runtime, evmClient, receiver, EMPTY_CHECK_DATA, label);
   if (!performData) return 'No action needed';
 
+  // Only used for the quota check, never as the gas limit: with too little gas `onReport` can
+  // succeed while a Governance call or its a.DI forward fails.
   const estimate = estimateOnReport(runtime, evmClient, receiver, performData, label);
   if (estimate === null) return 'submit skipped';
   if (!fitsWriteQuota(estimate)) {

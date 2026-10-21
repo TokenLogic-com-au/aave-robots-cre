@@ -1,9 +1,18 @@
 import {z} from 'zod';
+import {getAddress, isAddress, type Address} from 'viem';
+
+// Config addresses are typed by hand and viem checks EIP-55 casing strictly when
+// encoding, so normalize on parse.
+const address = z
+  .string()
+  .refine((a) => isAddress(a, {strict: false}), 'invalid address')
+  .transform((a): Address => getAddress(a.toLowerCase()));
 
 export const networkSchema = z.object({
   chainName: z.string(),
   isTestnet: z.boolean().default(false),
-  receiver: z.string(),
+  // Empty until the receiver is deployed; the workflow registers no trigger meanwhile.
+  receiver: address.or(z.literal('')),
 });
 export type NetworkConfig = z.infer<typeof networkSchema>;
 
