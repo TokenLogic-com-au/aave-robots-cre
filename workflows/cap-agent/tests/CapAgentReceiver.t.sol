@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {Test} from 'forge-std/Test.sol';
+import {Test, Vm} from 'forge-std/Test.sol';
 
 import {Ownable} from 'openzeppelin-contracts/contracts/access/Ownable.sol';
 import {IWithGuardian} from 'solidity-utils/contracts/access-control/interfaces/IWithGuardian.sol';
@@ -50,6 +50,12 @@ contract CapAgentReceiverTest is Test {
       abi.encodeWithSelector(IAgentHub.isAgentPermissioned.selector),
       abi.encode(false)
     );
+    vm.mockCall(
+      hub,
+      abi.encodeWithSelector(IAgentHub.check.selector),
+      abi.encode(false, new IAgentHub.ActionData[](0))
+    );
+    vm.mockCall(hub, abi.encodeWithSelector(IAgentHub.execute.selector), '');
 
     robot = new CapAgentReceiverHarness(hub, owner, guardian, _ids(AGENT_COUNT));
   }
@@ -100,6 +106,10 @@ contract CapAgentReceiverTest is Test {
     assertEq(robot.MAX_ACTIONS(), 10, 'unexpected MAX_ACTIONS');
   }
 
+  function test_MAX_REASON_LENGTH_is256() public view {
+    assertEq(robot.MAX_REASON_LENGTH(), 256, 'unexpected MAX_REASON_LENGTH');
+  }
+
   function test_supportsInterface() public view {
     assertTrue(robot.supportsInterface(type(IReceiver).interfaceId), 'IReceiver not supported');
     assertTrue(
@@ -124,9 +134,7 @@ contract CapAgentReceiverTest is Test {
     assertEq(performData.length, 0, 'performData should be empty');
   }
 
-  function test_checkUpkeep_returnsFalse_whenHubHasNothingToExecute() public {
-    _mockCheck(_ids(AGENT_COUNT), false, new IAgentHub.ActionData[](0));
-
+  function test_checkUpkeep_returnsFalse_whenHubHasNothingToExecute() public view {
     (bool needed, bytes memory performData) = robot.checkUpkeep('');
     assertFalse(needed, 'upkeep needed when hub has nothing to execute');
     assertEq(performData.length, 0, 'performData should be empty');
@@ -136,20 +144,44 @@ contract CapAgentReceiverTest is Test {
     IAgentHub.ActionData[] memory actions = new IAgentHub.ActionData[](2);
     actions[0] = _action(0, _markets(marketA));
     actions[1] = _action(2, _markets(marketA, marketB));
-    _mockCheck(_ids(AGENT_COUNT), true, actions);
+    _mockCheckAgent(actions[0]);
+    _mockCheckAgent(actions[1]);
 
     (bool needed, bytes memory performData) = robot.checkUpkeep('');
     assertTrue(needed, 'upkeep should be needed');
     assertEq(performData, abi.encode(actions), 'performData mismatch');
   }
 
-  function test_checkUpkeep_checksOnlyEnabledAgents() public {
+  function test_checkUpkeep_checksEachEnabledAgentOnItsOwn() public {
     vm.prank(guardian);
     robot.disableAgent(1);
-    _mockCheck(_two(0, 2), false, new IAgentHub.ActionData[](0));
 
-    vm.expectCall(hub, abi.encodeCall(IAgentHub.check, (_two(0, 2))));
+    vm.expectCall(hub, abi.encodeCall(IAgentHub.check, (_one(0))), 1);
+    vm.expectCall(hub, abi.encodeCall(IAgentHub.check, (_one(1))), 0);
+    vm.expectCall(hub, abi.encodeCall(IAgentHub.check, (_one(2))), 1);
     robot.checkUpkeep('');
+  }
+
+  /// Every combination of `check` reverting or returning an update for agents 0..2: the
+  /// updates of the agents whose `check` succeeded are still returned.
+  function test_fuzz_checkUpkeep_skipsAgentsWhoseCheckReverts(bool[3] memory reverts) public {
+    IAgentHub.ActionData[] memory buffer = new IAgentHub.ActionData[](AGENT_COUNT);
+    uint256 count = 0;
+    for (uint256 i = 0; i < AGENT_COUNT; i++) {
+      IAgentHub.ActionData memory action = _action(i, _markets(marketA));
+      if (reverts[i]) {
+        vm.mockCallRevert(hub, abi.encodeCall(IAgentHub.check, (_one(i))), 'InvalidBytesValue');
+      } else {
+        _mockCheckAgent(action);
+        buffer[count++] = action;
+      }
+    }
+    IAgentHub.ActionData[] memory expected = new IAgentHub.ActionData[](count);
+    for (uint256 i = 0; i < count; i++) expected[i] = buffer[i];
+
+    (bool needed, bytes memory performData) = robot.checkUpkeep('');
+    assertEq(needed, count > 0, 'unexpected upkeepNeeded');
+    assertEq(performData, count > 0 ? abi.encode(expected) : bytes(''), 'performData mismatch');
   }
 
   /// Every combination of agents 0..2 permissioned or not on the hub, with or without this
@@ -162,19 +194,14 @@ contract CapAgentReceiverTest is Test {
     uint256 count = 0;
     for (uint256 i = 0; i < AGENT_COUNT; i++) {
       _mockPermissioned(i, permissioned[i], sender[i]);
-      if (!permissioned[i] || sender[i]) buffer[count++] = i;
+      bool executable = !permissioned[i] || sender[i];
+      if (executable) buffer[count++] = i;
+      vm.expectCall(hub, abi.encodeCall(IAgentHub.check, (_one(i))), executable ? 1 : 0);
     }
     uint256[] memory expected = new uint256[](count);
     for (uint256 i = 0; i < count; i++) expected[i] = buffer[i];
 
     assertEq(robot.executableAgents(), expected, 'unexpected executable agents');
-
-    if (count == 0) {
-      vm.expectCall(hub, abi.encodeWithSelector(IAgentHub.check.selector), 0);
-    } else {
-      _mockCheck(expected, false, new IAgentHub.ActionData[](0));
-      vm.expectCall(hub, abi.encodeCall(IAgentHub.check, (expected)));
-    }
     (bool needed, ) = robot.checkUpkeep('');
     assertFalse(needed, 'upkeep needed without pending updates');
   }
@@ -184,7 +211,8 @@ contract CapAgentReceiverTest is Test {
     IAgentHub.ActionData[] memory actions = new IAgentHub.ActionData[](2);
     actions[0] = _action(0, _manyMarkets('a', maxActions - 1));
     actions[1] = _action(1, _manyMarkets('b', 5));
-    _mockCheck(_ids(AGENT_COUNT), true, actions);
+    _mockCheckAgent(actions[0]);
+    _mockCheckAgent(actions[1]);
 
     (, bytes memory performData) = robot.checkUpkeep('');
     IAgentHub.ActionData[] memory capped = abi.decode(performData, (IAgentHub.ActionData[]));
@@ -233,8 +261,8 @@ contract CapAgentReceiverTest is Test {
   }
 
   /// Every combination of agents 0..2 enabled / disabled on the robot, with a report holding
-  /// one action per agent: `onReport` forwards exactly the enabled ones, or reverts if none.
-  function test_fuzz_onReport_forwardsOnlyEnabledAgents(bool[3] memory enabled) public {
+  /// one action per agent: `onReport` executes exactly the enabled ones, or reverts if none.
+  function test_fuzz_onReport_executesOnlyEnabledAgents(bool[3] memory enabled) public {
     IAgentHub.ActionData[] memory report = new IAgentHub.ActionData[](AGENT_COUNT);
     IAgentHub.ActionData[] memory expected = new IAgentHub.ActionData[](AGENT_COUNT);
     uint256 count = 0;
@@ -246,6 +274,11 @@ contract CapAgentReceiverTest is Test {
         vm.prank(guardian);
         robot.disableAgent(i);
       }
+      vm.expectCall(
+        hub,
+        abi.encodeCall(IAgentHub.execute, (_single(i, marketA))),
+        enabled[i] ? 1 : 0
+      );
     }
     IAgentHub.ActionData[] memory forwarded = new IAgentHub.ActionData[](count);
     for (uint256 i = 0; i < count; i++) forwarded[i] = expected[i];
@@ -256,45 +289,75 @@ contract CapAgentReceiverTest is Test {
       'unexpected enabled actions'
     );
 
-    if (count == 0) {
-      vm.expectCall(hub, abi.encodeWithSelector(IAgentHub.execute.selector), 0);
-      vm.expectRevert(ICapAgentReceiver.NoActionsToExecute.selector);
-    } else {
-      _mockExecute(forwarded);
-      vm.expectCall(hub, abi.encodeCall(IAgentHub.execute, (forwarded)));
-    }
+    if (count == 0) vm.expectRevert(ICapAgentReceiver.NoActionsToExecute.selector);
     vm.prank(anyone);
     robot.onReport('', abi.encode(report));
   }
 
-  function test_onReport_executesOnHub_whenAnyoneCalls() public {
+  function test_onReport_executesEachMarketOnItsOwn_whenAnyoneCalls() public {
     IAgentHub.ActionData[] memory actions = new IAgentHub.ActionData[](1);
     actions[0] = _action(1, _markets(marketA, marketB));
-    _mockExecute(actions);
 
-    vm.expectCall(hub, abi.encodeCall(IAgentHub.execute, (actions)));
+    vm.expectCall(hub, abi.encodeCall(IAgentHub.execute, (_single(1, marketA))), 1);
+    vm.expectCall(hub, abi.encodeCall(IAgentHub.execute, (_single(1, marketB))), 1);
     vm.prank(anyone);
     robot.onReport(bytes('ignored metadata'), abi.encode(actions));
+  }
+
+  function test_onReport_isolatesFailingUpdate() public {
+    IAgentHub.ActionData[] memory actions = new IAgentHub.ActionData[](2);
+    actions[0] = _action(0, _markets(marketA));
+    actions[1] = _action(1, _markets(marketB));
+    bytes memory reason = abi.encodeWithSignature('Error(string)', 'no risk admin');
+    _mockExecuteRevert(1, marketB, reason);
+
+    vm.expectCall(hub, abi.encodeCall(IAgentHub.execute, (_single(0, marketA))), 1);
+    vm.expectEmit(address(robot));
+    emit ICapAgentReceiver.ActionFailed(1, marketB, reason);
+
+    vm.prank(anyone);
+    robot.onReport('', abi.encode(actions));
+  }
+
+  function test_onReport_revertsWith_NoActionCanBePerformed_whenEveryUpdateFails() public {
+    IAgentHub.ActionData[] memory actions = new IAgentHub.ActionData[](1);
+    actions[0] = _action(0, _markets(marketA, marketB));
+    bytes memory reason = abi.encodeWithSelector(IAgentHub.NoActionCanBePerformed.selector);
+    _mockExecuteRevert(0, marketA, reason);
+    _mockExecuteRevert(0, marketB, reason);
+
+    vm.prank(anyone);
+    vm.expectRevert(IAgentHub.NoActionCanBePerformed.selector);
+    robot.onReport('', abi.encode(actions));
+  }
+
+  function test_onReport_truncatesRevertReason() public {
+    uint256 maxReasonLength = robot.MAX_REASON_LENGTH();
+    IAgentHub.ActionData[] memory actions = new IAgentHub.ActionData[](2);
+    actions[0] = _action(0, _markets(marketA));
+    actions[1] = _action(1, _markets(marketB));
+    bytes memory reason = new bytes(maxReasonLength * 4);
+    for (uint256 i = 0; i < reason.length; i++) reason[i] = bytes1(uint8(i));
+    _mockExecuteRevert(1, marketB, reason);
+
+    vm.recordLogs();
+    vm.prank(anyone);
+    robot.onReport('', abi.encode(actions));
+
+    Vm.Log[] memory logs = vm.getRecordedLogs();
+    assertEq(logs.length, 1, 'expected a single ActionFailed');
+    assertEq(logs[0].topics[0], ICapAgentReceiver.ActionFailed.selector, 'wrong event');
+    bytes memory logged = abi.decode(logs[0].data, (bytes));
+    assertEq(logged.length, maxReasonLength, 'reason not truncated');
+    for (uint256 i = 0; i < logged.length; i++) {
+      assertEq(logged[i], reason[i], 'truncated reason differs from the revert data');
+    }
   }
 
   function test_onReport_revertsWith_NoActionsToExecute_whenEmptyReport() public {
     vm.prank(anyone);
     vm.expectRevert(ICapAgentReceiver.NoActionsToExecute.selector);
     robot.onReport('', abi.encode(new IAgentHub.ActionData[](0)));
-  }
-
-  function test_onReport_bubblesUpHubRevert_whenNothingInjectable() public {
-    IAgentHub.ActionData[] memory actions = new IAgentHub.ActionData[](1);
-    actions[0] = _action(0, _markets(marketA));
-    vm.mockCallRevert(
-      hub,
-      abi.encodeCall(IAgentHub.execute, (actions)),
-      abi.encodeWithSelector(IAgentHub.NoActionCanBePerformed.selector)
-    );
-
-    vm.prank(anyone);
-    vm.expectRevert(IAgentHub.NoActionCanBePerformed.selector);
-    robot.onReport('', abi.encode(actions));
   }
 
   function test_enableAgent() public {
@@ -377,15 +440,13 @@ contract CapAgentReceiverTest is Test {
     robot.rescueToken(makeAddr('token'), bob, 100);
   }
 
-  function _mockCheck(
-    uint256[] memory agentIds,
-    bool shouldExecute,
-    IAgentHub.ActionData[] memory actions
-  ) internal {
+  function _mockCheckAgent(IAgentHub.ActionData memory action) internal {
+    IAgentHub.ActionData[] memory actions = new IAgentHub.ActionData[](1);
+    actions[0] = action;
     vm.mockCall(
       hub,
-      abi.encodeCall(IAgentHub.check, (agentIds)),
-      abi.encode(shouldExecute, actions)
+      abi.encodeCall(IAgentHub.check, (_one(action.agentId))),
+      abi.encode(true, actions)
     );
   }
 
@@ -402,8 +463,16 @@ contract CapAgentReceiverTest is Test {
     );
   }
 
-  function _mockExecute(IAgentHub.ActionData[] memory actions) internal {
-    vm.mockCall(hub, abi.encodeCall(IAgentHub.execute, (actions)), '');
+  function _mockExecuteRevert(uint256 agentId, address market, bytes memory reason) internal {
+    vm.mockCallRevert(hub, abi.encodeCall(IAgentHub.execute, (_single(agentId, market))), reason);
+  }
+
+  function _single(
+    uint256 agentId,
+    address market
+  ) internal pure returns (IAgentHub.ActionData[] memory actions) {
+    actions = new IAgentHub.ActionData[](1);
+    actions[0] = _action(agentId, _markets(market));
   }
 
   function _action(

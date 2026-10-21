@@ -19,7 +19,7 @@ export {configSchema};
 
 type EvmClient = InstanceType<typeof cre.capabilities.EVMClient>;
 
-// CRE write gas quota, requested explicitly as each write's gas limit.
+// Gas the DON attaches to each write (no gasConfig is sent), i.e. the CRE write quota.
 export const MAX_WRITE_GAS = 16_777_216n;
 // Forwarder report verification and call overhead on top of `onReport`.
 export const WRITE_OVERHEAD_GAS = 250_000n;
@@ -75,9 +75,7 @@ export function writeReport(
       hashingAlgo: 'keccak256',
     })
     .result();
-  const result = evmClient
-    .writeReport(runtime, {receiver, report, gasConfig: {gasLimit: MAX_WRITE_GAS.toString()}})
-    .result();
+  const result = evmClient.writeReport(runtime, {receiver, report}).result();
 
   if (result.txStatus !== TxStatus.SUCCESS) {
     runtime.log(

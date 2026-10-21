@@ -44,11 +44,9 @@ abstract contract CapAgentForkBase is Test {
 
   /// Enables the agent on the hub and makes it a risk admin, so its config engine call can set caps.
   function _allowInjection(IAgentHubConfig hub, uint256 agentId, address aclAdmin) internal {
+    _enableAgent(hub, agentId);
+
     address agent = hub.getAgentAddress(agentId);
-
-    vm.prank(hub.getAgentAdmin(agentId));
-    hub.setAgentEnabled(agentId, true);
-
     IACLManager acl = IACLManager(_pool(hub, agentId).ADDRESSES_PROVIDER().getACLManager());
     if (!acl.isRiskAdmin(agent)) {
       vm.prank(aclAdmin);
@@ -56,28 +54,48 @@ abstract contract CapAgentForkBase is Test {
     }
   }
 
-  /// Publishes a cap update for the first allowed market with a cap, past the minimum delay.
+  function _enableAgent(IAgentHubConfig hub, uint256 agentId) internal {
+    vm.prank(hub.getAgentAdmin(agentId));
+    hub.setAgentEnabled(agentId, true);
+  }
+
+  /// Publishes a cap update 1% above the current cap of the first updatable market.
   function _publishCapUpdate(
     IAgentHubConfig hub,
     uint256 agentId
   ) internal returns (CapUpdate memory update) {
+    uint256 cap;
+    (update.market, cap) = _updatableMarket(hub, agentId);
+    uint256 increase = (cap * CAP_INCREASE_BPS) / BPS;
+    update.agentId = agentId;
+    update.newCap = cap + (increase == 0 ? 1 : increase);
+    update.updateId = _publish(hub, agentId, update.market, abi.encode(update.newCap));
+  }
+
+  /// First allowed market with a cap that is past the agent's minimum delay.
+  function _updatableMarket(
+    IAgentHubConfig hub,
+    uint256 agentId
+  ) internal view returns (address market, uint256 cap) {
     require(!hub.isMarketsFromAgentEnabled(agentId), 'agent reads markets from the agent');
 
     address[] memory markets = hub.getAllowedMarkets(agentId);
     uint256 minimumDelay = hub.getMinimumDelay(agentId);
-    uint256 cap = 0;
-    for (uint256 i = 0; i < markets.length && cap == 0; i++) {
+    for (uint256 i = 0; i < markets.length; i++) {
       uint256 lastInjected = hub.getLastInjectedUpdate(agentId, markets[i]).timestamp;
       if (lastInjected != 0 && block.timestamp - lastInjected < minimumDelay) continue;
       cap = _cap(hub, agentId, markets[i]);
-      update.market = markets[i];
+      if (cap != 0) return (markets[i], cap);
     }
-    require(cap != 0, 'no allowed market with a cap the agent can update');
+    revert('no allowed market with a cap the agent can update');
+  }
 
-    uint256 increase = (cap * CAP_INCREASE_BPS) / BPS;
-    update.agentId = agentId;
-    update.newCap = cap + (increase == 0 ? 1 : increase);
-
+  function _publish(
+    IAgentHubConfig hub,
+    uint256 agentId,
+    address market,
+    bytes memory newValue
+  ) internal returns (uint256 updateId) {
     IRiskOracle oracle = IRiskOracle(hub.getRiskOracle(agentId));
     if (!oracle.isAuthorized(publisher)) {
       vm.prank(oracle.owner());
@@ -86,14 +104,8 @@ abstract contract CapAgentForkBase is Test {
 
     string memory updateType = hub.getUpdateType(agentId);
     vm.prank(publisher);
-    oracle.publishRiskParameterUpdate(
-      'cap-agent-fork-test',
-      abi.encode(update.newCap),
-      updateType,
-      update.market,
-      ''
-    );
-    update.updateId = oracle.updateCounter();
+    oracle.publishRiskParameterUpdate('cap-agent-fork-test', newValue, updateType, market, '');
+    return oracle.updateCounter();
   }
 
   function _assertInjected(IAgentHubConfig hub, CapUpdate memory update) internal view {
@@ -204,6 +216,52 @@ contract CapAgentReceiverForkTest is CapAgentForkBase {
     vm.prank(anyone);
     vm.expectRevert(ICapAgentReceiver.NoActionsToExecute.selector);
     robot.onReport('', performData);
+  }
+
+  /// An agent enabled on the hub without RISK_ADMIN fails its injection; the other agent's
+  /// update in the same report still goes through.
+  function test_fork_onReport_isolatesAgentWithoutRiskAdmin() public {
+    _allowInjection(hub, SUPPLY_CAP_AGENT, GovernanceV3Avalanche.EXECUTOR_LVL_1);
+    _enableAgent(hub, BORROW_CAP_AGENT);
+    CapUpdate memory supply = _publishCapUpdate(hub, SUPPLY_CAP_AGENT);
+    CapUpdate memory borrow = _publishCapUpdate(hub, BORROW_CAP_AGENT);
+    uint256 borrowCapBefore = _cap(hub, BORROW_CAP_AGENT, borrow.market);
+
+    (, bytes memory performData) = robot.checkUpkeep('');
+    _assertActions(performData, supply, borrow);
+
+    vm.expectEmit(true, true, false, false, address(robot));
+    emit ICapAgentReceiver.ActionFailed(BORROW_CAP_AGENT, borrow.market, '');
+    vm.prank(anyone);
+    robot.onReport('', performData);
+
+    _assertInjected(hub, supply);
+    assertEq(_cap(hub, BORROW_CAP_AGENT, borrow.market), borrowCapBefore, 'borrow cap changed');
+  }
+
+  /// A Risk Oracle value over 32 bytes makes the agent's validation, and so the hub's `check`
+  /// for that agent, revert; the other agents are still checked.
+  function test_fork_checkUpkeep_skipsAgentWithMalformedUpdate() public {
+    _allowInjection(hub, SUPPLY_CAP_AGENT, GovernanceV3Avalanche.EXECUTOR_LVL_1);
+    _allowInjection(hub, BORROW_CAP_AGENT, GovernanceV3Avalanche.EXECUTOR_LVL_1);
+    CapUpdate memory supply = _publishCapUpdate(hub, SUPPLY_CAP_AGENT);
+    (address market, ) = _updatableMarket(hub, BORROW_CAP_AGENT);
+    _publish(hub, BORROW_CAP_AGENT, market, new bytes(33));
+
+    vm.expectRevert();
+    hub.check(_agentIds());
+
+    (bool needed, bytes memory performData) = robot.checkUpkeep('');
+    assertTrue(needed, 'checkUpkeep should still flag the supply cap update');
+    IAgentHub.ActionData[] memory actions = abi.decode(performData, (IAgentHub.ActionData[]));
+    assertEq(actions.length, 1, 'expected only the supply cap agent');
+    assertEq(actions[0].agentId, SUPPLY_CAP_AGENT, 'unexpected agent');
+    assertEq(actions[0].markets.length, 1, 'unexpected markets');
+    assertEq(actions[0].markets[0], supply.market, 'unexpected market');
+
+    vm.prank(anyone);
+    robot.onReport('', performData);
+    _assertInjected(hub, supply);
   }
 
   /// A permissioned agent only injects for its permissioned senders, so governance must add

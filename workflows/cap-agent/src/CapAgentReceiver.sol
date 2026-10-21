@@ -24,6 +24,9 @@ contract CapAgentReceiver is ICapAgentReceiver, OwnableWithGuardian, Rescuable {
   /// @inheritdoc ICapAgentReceiver
   uint256 public constant override MAX_ACTIONS = 10;
 
+  /// @inheritdoc ICapAgentReceiver
+  uint256 public constant override MAX_REASON_LENGTH = 256;
+
   EnumerableSet.UintSet internal _enabledAgents;
 
   /// @param agentHub_ The AgentHub to execute on.
@@ -59,25 +62,34 @@ contract CapAgentReceiver is ICapAgentReceiver, OwnableWithGuardian, Rescuable {
   function checkUpkeep(
     bytes calldata /* checkData */
   ) external view returns (bool upkeepNeeded, bytes memory performData) {
-    uint256[] memory agentIds = _executableAgents();
-    if (agentIds.length == 0) return (false, '');
-
-    (bool shouldExecute, IAgentHub.ActionData[] memory actions) = AGENT_HUB.check(agentIds);
-    if (!shouldExecute) return (false, '');
+    IAgentHub.ActionData[] memory actions = _checkAgents(_executableAgents());
+    if (actions.length == 0) return (false, '');
 
     return (true, abi.encode(_capActions(actions)));
   }
 
   /// @inheritdoc IReceiver
-  /// @dev Drops actions for agents not enabled on this robot. A stale report reverts in
-  /// `AgentHub.execute` (`NoActionCanBePerformed`), so it fails `estimateGas`.
+  /// @dev Drops actions for agents not enabled on this robot and executes each market update
+  /// in its own `execute` call, so one failing injection doesn't block the others. Reverts
+  /// `NoActionCanBePerformed` if none succeeded, so a stale report fails `estimateGas`.
   function onReport(bytes calldata /* metadata */, bytes calldata report) external override {
     IAgentHub.ActionData[] memory actions = _enabledActions(
       abi.decode(report, (IAgentHub.ActionData[]))
     );
     require(actions.length > 0, NoActionsToExecute());
 
-    AGENT_HUB.execute(actions);
+    bool executed = false;
+    for (uint256 i = 0; i < actions.length; i++) {
+      for (uint256 j = 0; j < actions[i].markets.length; j++) {
+        (bool success, bytes memory reason) = _execute(actions[i].agentId, actions[i].markets[j]);
+        if (success) {
+          executed = true;
+        } else {
+          emit ActionFailed(actions[i].agentId, actions[i].markets[j], reason);
+        }
+      }
+    }
+    require(executed, IAgentHub.NoActionCanBePerformed());
   }
 
   /// @inheritdoc ICapAgentReceiver
@@ -121,6 +133,56 @@ contract CapAgentReceiver is ICapAgentReceiver, OwnableWithGuardian, Rescuable {
     uint256[] memory agentIds = new uint256[](count);
     for (uint256 i = 0; i < count; i++) agentIds[i] = buffer[i];
     return agentIds;
+  }
+
+  /// @dev Checks each agent on its own, so an update that makes the hub's `check` revert
+  /// (e.g. a malformed value failing the agent's validation) only skips that agent.
+  function _checkAgents(
+    uint256[] memory agentIds
+  ) internal view returns (IAgentHub.ActionData[] memory) {
+    IAgentHub.ActionData[] memory buffer = new IAgentHub.ActionData[](agentIds.length);
+    uint256[] memory agentId = new uint256[](1);
+    uint256 count = 0;
+
+    for (uint256 i = 0; i < agentIds.length; i++) {
+      agentId[0] = agentIds[i];
+      try AGENT_HUB.check(agentId) returns (
+        bool shouldExecute,
+        IAgentHub.ActionData[] memory actions
+      ) {
+        // `check` returns at most one action per requested agent.
+        if (shouldExecute && actions.length > 0) buffer[count++] = actions[0];
+      } catch {}
+    }
+
+    return _shrink(buffer, count);
+  }
+
+  /// @dev `AGENT_HUB.execute` for a single market update, copying at most `MAX_REASON_LENGTH`
+  /// bytes of revert data.
+  function _execute(
+    uint256 agentId,
+    address market
+  ) internal returns (bool success, bytes memory reason) {
+    IAgentHub.ActionData[] memory action = new IAgentHub.ActionData[](1);
+    action[0].agentId = agentId;
+    action[0].markets = new address[](1);
+    action[0].markets[0] = market;
+    bytes memory data = abi.encodeCall(IAgentHub.execute, (action));
+    address hub = address(AGENT_HUB);
+    uint256 length;
+
+    assembly ('memory-safe') {
+      success := call(gas(), hub, 0, add(data, 0x20), mload(data), 0, 0)
+      length := returndatasize()
+    }
+    if (success) return (true, '');
+
+    if (length > MAX_REASON_LENGTH) length = MAX_REASON_LENGTH;
+    reason = new bytes(length);
+    assembly ('memory-safe') {
+      returndatacopy(add(reason, 0x20), 0, length)
+    }
   }
 
   /// @dev Keeps the first `MAX_ACTIONS` market updates, in order (the hub's `maxBatchSize` is

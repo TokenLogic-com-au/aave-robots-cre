@@ -48,20 +48,21 @@ function checkUpkeepMock(upkeepNeeded: boolean, performData: Hex = PERFORM_DATA)
 // Largest estimate that still fits the write gas limit with the forwarder margin.
 const MAX_ESTIMATE = ((MAX_WRITE_GAS - WRITE_OVERHEAD_GAS) * 63n) / 64n;
 
-// Mocks a pending injection estimated at `gas`, recording each write's receiver and gas limit.
+// Mocks a pending injection estimated at `gas`, recording each write's receiver and gasConfig.
 function pendingInjection(gas: bigint) {
   const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
   evmMock.callContract = checkUpkeepMock(true);
   evmMock.estimateGas = () => ({gas});
-  const writes: {receiver: Hex; gasLimit?: bigint}[] = [];
+  const writes: {receiver: Hex; gasConfig?: unknown}[] = [];
   evmMock.writeReport = (input) => {
-    writes.push({receiver: bytesToHex(input.receiver), gasLimit: input.gasConfig?.gasLimit});
+    writes.push({receiver: bytesToHex(input.receiver), gasConfig: input.gasConfig});
     return {txStatus: TxStatus.SUCCESS, txHash: hexToBytes(TX_HASH)};
   };
   return writes;
 }
 
-const WRITTEN = [{receiver: RECEIVER, gasLimit: MAX_WRITE_GAS}];
+// No gasConfig: the DON attaches its default gas limit, the quota.
+const WRITTEN = [{receiver: RECEIVER, gasConfig: undefined}];
 
 const handle = createReceiverHandler(NETWORK);
 
@@ -166,7 +167,7 @@ describe('cap-agent workflow', () => {
     expect(fitsWriteGasQuota(MAX_WRITE_GAS - WRITE_OVERHEAD_GAS)).toBe(false);
   });
 
-  test('writes to the receiver with the quota as gas limit and returns the tx hash', () => {
+  test('writes to the receiver without a gasConfig and returns the tx hash', () => {
     const writes = pendingInjection(100_000n);
 
     expect(handle(newTestRuntime() as never)).toBe(`injected, tx=${TX_HASH}`);

@@ -40,6 +40,12 @@ interface ICapAgentReceiver is IAaveCREReceiver {
   /// @param enabled Whether the agent is now enabled for automation.
   event AgentStatusUpdated(uint256 indexed agentId, bool enabled);
 
+  /// @notice Emitted by `onReport` for each market update whose `execute` call reverted.
+  /// @param agentId The agent of the update.
+  /// @param market The market of the update.
+  /// @param reason The revert data, truncated to `MAX_REASON_LENGTH` bytes.
+  event ActionFailed(uint256 indexed agentId, address indexed market, bytes reason);
+
   /// @notice Thrown when `onReport` runs with no action for an enabled agent.
   error NoActionsToExecute();
 
@@ -60,6 +66,9 @@ interface ICapAgentReceiver is IAaveCREReceiver {
 
   /// @notice Max market updates returned by a single `checkUpkeep`.
   function MAX_ACTIONS() external pure returns (uint256);
+
+  /// @notice Max bytes of revert data kept in `ActionFailed`.
+  function MAX_REASON_LENGTH() external pure returns (uint256);
 
   /// @notice Add an agent to the automation allowlist. Owner-only.
   /// @param agentId The agent to enable. Must be registered on the hub and not already enabled.

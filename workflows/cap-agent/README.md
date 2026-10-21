@@ -30,13 +30,16 @@ cap-agent/
 `CapAgentReceiver` implements [`IAaveCREReceiver`](../shared/src/IAaveCREReceiver.sol):
 
 - `checkUpkeep(_) → (needed, ActionData[])` — read-only probe. Calls `AGENT_HUB.check`
-  for the enabled agents `execute` would act on (a permissioned agent only if this receiver
-  is one of its permissioned senders) and keeps the first `MAX_ACTIONS` (10) market updates
-  per tick, since the hub's `maxBatchSize` is unset. `checkData` is unused.
+  for each enabled agent `execute` would act on (a permissioned agent only if this receiver
+  is one of its permissioned senders), skipping an agent whose `check` reverts (e.g. a
+  malformed Risk Oracle value), and keeps the first `MAX_ACTIONS` (10) market updates per
+  tick, since the hub's `maxBatchSize` is unset. `checkData` is unused.
 - `onReport(metadata, ActionData[])` — drops actions for agents not enabled on the robot
-  (reverts `NoActionsToExecute` if none is left) and calls `AGENT_HUB.execute`, which
-  re-validates each update (expiry, update id, minimum delay, agent validation, configured
-  market) and reverts `NoActionCanBePerformed` if nothing is injectable.
+  (reverts `NoActionsToExecute` if none is left) and calls `AGENT_HUB.execute` once per
+  market update, so a failing injection only emits `ActionFailed(agentId, market, reason)`
+  (reason capped at `MAX_REASON_LENGTH`, 256 bytes). The hub re-validates each update
+  (expiry, update id, minimum delay, agent validation, configured market); `onReport`
+  reverts `NoActionCanBePerformed` if none was injected.
 
 `onReport` is **permissionless**: `metadata` and `msg.sender` are ignored. No agent is
 permissioned on the hubs, so anyone can already call `execute` directly. Adding the receiver
@@ -81,8 +84,9 @@ cd workflows/cap-agent/offchain && bun test                                     
 The fork suites grant the prerequisites above by impersonating governance, publish a
 supply and a borrow cap update on the live Risk Oracle and check the robot injects both in
 one report. `CapAgentReceiverForkTest` also covers, on Avalanche, a stale report, an agent
-disabled on the robot and a permissioned agent; `CapAgentDeployScriptForkTest` runs the
-deploy script on every covered chain.
+disabled on the robot, a permissioned agent, an agent without `RISK_ADMIN` next to one with
+it, and a malformed (33-byte) update; `CapAgentDeployScriptForkTest` runs the deploy script
+on every covered chain.
 
 `workflow.test.ts` runs `createReceiverHandler` against a mocked cre-sdk EVM client
 (`EvmMock`) for each branch. Requires `bun` on PATH.
