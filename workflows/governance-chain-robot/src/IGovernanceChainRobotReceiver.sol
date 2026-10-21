@@ -61,6 +61,9 @@ interface IGovernanceChainRobotReceiver is IAaveCREReceiver {
   /// @notice Thrown when setting the maximum gas price to its current value.
   error MaxGasPriceUnchanged();
 
+  /// @notice Thrown when deploying with a zero max gas price.
+  error InvalidMaxGasPrice();
+
   /// @notice The Governance V3 contract the robot acts on.
   function GOVERNANCE() external view returns (IGovernanceCore);
 

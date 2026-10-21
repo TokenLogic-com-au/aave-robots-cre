@@ -91,6 +91,11 @@ contract GovernanceChainRobotReceiverTest is Test {
     );
   }
 
+  function test_constructor_revertsWith_InvalidMaxGasPrice() public {
+    vm.expectRevert(IGovernanceChainRobotReceiver.InvalidMaxGasPrice.selector);
+    new GovernanceChainRobotReceiver(address(gov), oracle, 0, owner, guardian);
+  }
+
   function test_constants() public view {
     assertEq(robot.MAX_ACTIONS(), 5, 'unexpected MAX_ACTIONS');
     assertEq(robot.MAX_SKIP(), 20, 'unexpected MAX_SKIP');

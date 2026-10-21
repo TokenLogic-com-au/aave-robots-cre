@@ -52,6 +52,7 @@ contract GovernanceChainRobotReceiver is
     address initialGuardian_
   ) OwnableWithGuardian(initialOwner_, initialGuardian_) {
     require(governance_ != address(0) && gasPriceOracle_ != address(0), InvalidAddress());
+    require(maxGasPrice_ != 0, InvalidMaxGasPrice());
     GOVERNANCE = IGovernanceCore(governance_);
     GAS_PRICE_ORACLE = gasPriceOracle_;
     _maxGasPrice = maxGasPrice_;
