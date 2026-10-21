@@ -120,7 +120,7 @@ describe('voting-chain-robot workflow', () => {
     expect(runtime.getLogs().find((l) => l.includes('exceeds the CRE write quota'))).toBeDefined();
   });
 
-  test('writes a report at the largest estimate that fits, estimating once, with the full quota', () => {
+  test('writes a report at the largest estimate that fits, estimating once, without gasConfig', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     evmMock.callContract = checkUpkeepMock(true);
     let estimates = 0;
@@ -128,15 +128,15 @@ describe('voting-chain-robot workflow', () => {
       estimates++;
       return {gas: MAX_ESTIMATE};
     };
-    let gasLimit: string | bigint | undefined;
+    let gasConfigSent = true;
     evmMock.writeReport = (input) => {
-      gasLimit = input.gasConfig?.gasLimit;
+      gasConfigSent = input.gasConfig !== undefined;
       return {txStatus: TxStatus.SUCCESS, txHash: hexToBytes(TX_HASH)};
     };
 
     expect(handle(newTestRuntime() as never)).toBe(`actions performed, tx=${TX_HASH}`);
     expect(estimates).toBe(1);
-    expect(BigInt(gasLimit!)).toBe(MAX_WRITE_GAS);
+    expect(gasConfigSent).toBe(false);
   });
 
   test('returns "onReport reverted" and logs when onReport reverts inside the write', () => {
