@@ -33,6 +33,9 @@ interface IExecutionChainRobotReceiver is IAaveCREReceiver {
   /// @notice Thrown when setting a gas price cap on a robot deployed without a gas price oracle.
   error GasPriceCapNotSupported();
 
+  /// @notice Thrown when deploying with a gas price oracle and a zero max gas price.
+  error InvalidMaxGasPrice();
+
   /// @notice Thrown when setting the maximum gas price to its current value.
   error MaxGasPriceUnchanged();
 
