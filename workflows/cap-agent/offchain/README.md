@@ -1,23 +1,20 @@
 # CapAgent — CRE workflow
 
-Off-chain CRE workflow driving [`CapAgentReceiver`](../src/CapAgentReceiver.sol) on every
-covered chain. On each cron tick (every 5 minutes), for each chain with a `receiver`, it
-calls the receiver's `checkUpkeep` (with empty `checkData`) and, when updates are ready to
-inject, estimates `onReport` with the returned `performData`, signs it and writes it back
-as the receiver's `onReport`.
+Off-chain CRE workflow driving [`CapAgentReceiver`](../src/CapAgentReceiver.sol). Every 5
+minutes, for each chain with a `receiver`, it calls the receiver's `checkUpkeep` (empty
+`checkData`) and, when updates are ready, signs the returned `performData` and writes it
+back as the receiver's `onReport`. Faster polling adds nothing: the hub rate limits each
+agent and market with its minimum delay.
 
-A write whose `onReport` estimate exceeds the CRE write gas quota (`MAX_WRITE_GAS`,
-16,777,216, the gas the DON attaches to a write) is skipped and logged, since it would run
-out of gas inside the forwarder. The receiver caps a report at 10 market updates, so this
-should not happen in practice. The estimate and write live in the robot's
-[`workflow.ts`](workflow.ts) rather than the shared `submitReport`, which doesn't expose
-the estimate.
+Each write is estimated once and sent with `gasLimit = MAX_WRITE_GAS` (16,777,216, the CRE
+write quota). It is skipped and logged when `estimate * 64/63 + WRITE_OVERHEAD_GAS` (250k,
+forwarder verification and call) exceeds the quota, and reported as failed when `onReport`
+reverts inside the forwarder tx.
 
 ## Config
 
-`receiver` is filled in after the contract is deployed on each chain. Chains with an
-empty `receiver` get no trigger, so the workflow can only be simulated once at least one
-receiver is set. One cron trigger per chain (6, within CRE's 10 per workflow).
+`receiver` is filled in after the contract is deployed on each chain. Chains with an empty
+`receiver` get no trigger. One cron trigger per chain (6, within CRE's 10 per workflow).
 
 ## Setup
 
@@ -38,8 +35,7 @@ cre workflow activate ./cap-agent/offchain --env=../.env --target=cap-agent-prod
 
 Or via the `package.json` scripts (`npm run simulate:production`,
 `npm run deploy:production:unsigned`, …). The workflow name is set in
-[`workflow.yaml`](workflow.yaml) (`cap-agent-production`). Deploying again with the same
-name updates the existing workflow.
+[`workflow.yaml`](workflow.yaml) (`cap-agent-production`).
 
 ## Testing
 

@@ -22,13 +22,18 @@ interface IAgentHub {
   function execute(ActionData[] memory actions) external;
 
   function getAgentCount() external view returns (uint256);
+
+  function isAgentPermissioned(uint256 agentId) external view returns (bool);
+
+  function isPermissionedSender(uint256 agentId, address sender) external view returns (bool);
 }
 
 /// @title ICapAgentReceiver
-/// @notice Robot that injects Risk Oracle updates through an Aave `AgentHub` (supply / borrow
-/// caps, rate strategies) for the agents it is enabled for.
-/// @dev `checkData` is unused (the hub and the agents are set on the contract); `performData`
-/// and the `report` are `abi.encode(IAgentHub.ActionData[])`.
+/// @author Aave Labs
+/// @notice Robot that injects Risk Oracle updates (caps, rate strategies) through an Aave
+/// `AgentHub` for the agents it is enabled for.
+/// @dev `checkData` is unused; `performData` and the `report` are
+/// `abi.encode(IAgentHub.ActionData[])`.
 interface ICapAgentReceiver is IAaveCREReceiver {
   /// @notice Emitted when an agent is added to or removed from the automation allowlist.
   /// @param agentId The agent updated.
@@ -53,8 +58,7 @@ interface ICapAgentReceiver is IAaveCREReceiver {
   /// @notice The AgentHub this robot executes on.
   function AGENT_HUB() external view returns (IAgentHub);
 
-  /// @notice Max market updates returned by a single `checkUpkeep` (the rest are picked up
-  /// next tick).
+  /// @notice Max market updates returned by a single `checkUpkeep`.
   function MAX_ACTIONS() external pure returns (uint256);
 
   /// @notice Add an agent to the automation allowlist. Owner-only.
@@ -65,8 +69,8 @@ interface ICapAgentReceiver is IAaveCREReceiver {
   /// @param agentId The agent to disable. Must be currently enabled.
   function disableAgent(uint256 agentId) external;
 
-  /// @notice Whether an agent is enabled for automation on this robot. Independent of the
-  /// hub's own `isAgentEnabled`, which must also be true for updates to be injected.
+  /// @notice Whether an agent is enabled on this robot (independent of the hub's own
+  /// `isAgentEnabled`).
   /// @param agentId The agent to query.
   function isAgentEnabled(uint256 agentId) external view returns (bool);
 

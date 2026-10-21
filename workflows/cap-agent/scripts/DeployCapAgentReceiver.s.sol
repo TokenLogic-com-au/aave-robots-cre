@@ -51,9 +51,8 @@ contract DeployCapAgentReceiver is Script {
     return address(receiver);
   }
 
-  /// @dev The chains where BGD's `ChainlinkAgentHub` runs, with the agent ids its upkeep
-  /// checks: supply and borrow caps everywhere, plus rate strategies on Avalanche, Arbitrum
-  /// and Base. Owner / guardian are the chain's governance executor and guardian.
+  /// @dev Agents: supply and borrow caps everywhere, plus rate strategies on Avalanche,
+  /// Arbitrum and Base. Owner / guardian are the chain's governance executor and guardian.
   function getDeployConfig(uint256 chainId) public pure returns (DeployConfig memory) {
     if (chainId == ChainIds.AVALANCHE)
       return

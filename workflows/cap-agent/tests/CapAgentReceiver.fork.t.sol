@@ -20,8 +20,7 @@ import {DeployCapAgentReceiver} from '../scripts/DeployCapAgentReceiver.s.sol';
 import {CapAgentReceiverHarness} from './helpers/CapAgentReceiverHarness.sol';
 import {IAgentHubConfig, IRiskOracle, IAaveAgent, IChainlinkAgentHub} from './helpers/RiskAgentsInterfaces.sol';
 
-/// @dev Grants what governance has to grant for an injection to go through, and publishes
-/// Risk Oracle cap updates for the robot to inject.
+/// @dev Grants what governance must grant for injections and publishes Risk Oracle cap updates.
 abstract contract CapAgentForkBase is Test {
   using ReserveConfiguration for DataTypes.ReserveConfigurationMap;
 
@@ -43,8 +42,7 @@ abstract contract CapAgentForkBase is Test {
     uint256 updateId;
   }
 
-  /// Enables the agent on the hub (agent admin) and makes the agent a risk admin (ACL admin),
-  /// so its config engine call can set caps. Both are off on the covered chains.
+  /// Enables the agent on the hub and makes it a risk admin, so its config engine call can set caps.
   function _allowInjection(IAgentHubConfig hub, uint256 agentId, address aclAdmin) internal {
     address agent = hub.getAgentAddress(agentId);
 
@@ -58,8 +56,7 @@ abstract contract CapAgentForkBase is Test {
     }
   }
 
-  /// Publishes a cap update on the agent's Risk Oracle for the first allowed market that has
-  /// a cap and is past the agent's minimum delay.
+  /// Publishes a cap update for the first allowed market with a cap, past the minimum delay.
   function _publishCapUpdate(
     IAgentHubConfig hub,
     uint256 agentId
@@ -210,15 +207,17 @@ contract CapAgentReceiverForkTest is CapAgentForkBase {
   }
 
   /// A permissioned agent only injects for its permissioned senders, so governance must add
-  /// the receiver as one.
-  function test_fork_onReport_permissionedAgent_needsReceiverAsSender() public {
+  /// the receiver as one; until then `checkUpkeep` skips it.
+  function test_fork_permissionedAgent_needsReceiverAsSender() public {
     _allowInjection(hub, SUPPLY_CAP_AGENT, GovernanceV3Avalanche.EXECUTOR_LVL_1);
     CapUpdate memory supply = _publishCapUpdate(hub, SUPPLY_CAP_AGENT);
+    (, bytes memory performData) = robot.checkUpkeep('');
     address admin = hub.getAgentAdmin(SUPPLY_CAP_AGENT);
     vm.prank(admin);
     hub.setAgentAsPermissioned(SUPPLY_CAP_AGENT, true);
-    (, bytes memory performData) = robot.checkUpkeep('');
 
+    (bool needed, ) = robot.checkUpkeep('');
+    assertFalse(needed, 'upkeep needed for a permissioned agent without the robot as sender');
     vm.prank(anyone);
     vm.expectRevert(IAgentHub.NoActionCanBePerformed.selector);
     robot.onReport('', performData);
@@ -226,8 +225,12 @@ contract CapAgentReceiverForkTest is CapAgentForkBase {
     vm.prank(admin);
     hub.addPermissionedSender(SUPPLY_CAP_AGENT, address(robot));
 
+    bytes memory newPerformData;
+    (needed, newPerformData) = robot.checkUpkeep('');
+    assertTrue(needed, 'upkeep not needed once the robot is a permissioned sender');
+    assertEq(newPerformData, performData, 'unexpected performData');
     vm.prank(anyone);
-    robot.onReport('', performData);
+    robot.onReport('', newPerformData);
     _assertInjected(hub, supply);
   }
 

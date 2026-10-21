@@ -65,7 +65,7 @@ interface IAaveAgent {
   function POOL() external view returns (IPool);
 }
 
-/// @dev BGD's `ChainlinkAgentHub`, the Chainlink Automation wrapper this robot replaces.
+/// @dev The Chainlink Automation wrapper around the hub.
 /// https://github.com/ChaosLabsInc/chaos-agents/blob/main/src/contracts/automation/ChainlinkAgentHub.sol
 interface IChainlinkAgentHub {
   function AGENT_HUB() external view returns (address);
