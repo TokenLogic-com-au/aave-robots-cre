@@ -1,5 +1,6 @@
 import {describe, expect} from 'bun:test';
 import {TxStatus, getNetwork} from '@chainlink/cre-sdk';
+import {EVM_PB} from '@chainlink/cre-sdk/pb';
 import {EvmMock, newTestRuntime, test} from '@chainlink/cre-sdk/test';
 import {bytesToHex, decodeFunctionData, hexToBytes, type Hex} from 'viem';
 
@@ -9,7 +10,14 @@ import {
   type CallContractInput,
 } from '../../shared/offchain/testing/mocks';
 import {IAaveCREReceiverABI} from '../../shared/offchain/abi/IAaveCREReceiver';
-import {MAX_WRITE_GAS, configSchema, createReceiverHandler, initWorkflow} from './workflow';
+import {
+  MAX_WRITE_GAS,
+  WRITE_OVERHEAD_GAS,
+  configSchema,
+  createReceiverHandler,
+  fitsWriteQuota,
+  initWorkflow,
+} from './workflow';
 import productionConfig from './config.production.json';
 
 const VOTING_CHAINS = ['ethereum-mainnet', 'avalanche-mainnet', 'polygon-mainnet'];
@@ -39,6 +47,9 @@ function checkUpkeepMock(upkeepNeeded: boolean, performData: Hex = PERFORM_DATA)
     throw new Error(`checkUpkeepMock: unmocked selector ${selector}`);
   };
 }
+
+// Largest onReport estimate that still fits a write (fitsWriteQuota rounds down).
+const MAX_ESTIMATE = ((MAX_WRITE_GAS - WRITE_OVERHEAD_GAS + 1n) * 63n - 1n) / 64n;
 
 const handle = createReceiverHandler(NETWORK);
 
@@ -88,13 +99,13 @@ describe('voting-chain-robot workflow', () => {
     expect(written).toBe(false);
   });
 
-  test('skips and logs a report estimated above the CRE write gas quota', () => {
+  test('skips and logs a report estimated above the CRE write quota', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     evmMock.callContract = checkUpkeepMock(true);
     let estimates = 0;
     evmMock.estimateGas = () => {
       estimates++;
-      return {gas: MAX_WRITE_GAS + 1n};
+      return {gas: MAX_ESTIMATE + 1n};
     };
     let written = false;
     evmMock.writeReport = () => {
@@ -106,18 +117,41 @@ describe('voting-chain-robot workflow', () => {
     expect(handle(runtime as never)).toBe('submit skipped');
     expect(written).toBe(false);
     expect(estimates).toBe(1);
-    expect(
-      runtime.getLogs().find((l) => l.includes('exceeds the CRE write gas quota')),
-    ).toBeDefined();
+    expect(runtime.getLogs().find((l) => l.includes('exceeds the CRE write quota'))).toBeDefined();
   });
 
-  test('writes a report estimated at exactly the quota', () => {
+  test('writes a report at the largest estimate that fits, estimating once, with the full quota', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     evmMock.callContract = checkUpkeepMock(true);
-    evmMock.estimateGas = () => ({gas: MAX_WRITE_GAS});
-    evmMock.writeReport = () => ({txStatus: TxStatus.SUCCESS, txHash: hexToBytes(TX_HASH)});
+    let estimates = 0;
+    evmMock.estimateGas = () => {
+      estimates++;
+      return {gas: MAX_ESTIMATE};
+    };
+    let gasLimit: string | bigint | undefined;
+    evmMock.writeReport = (input) => {
+      gasLimit = input.gasConfig?.gasLimit;
+      return {txStatus: TxStatus.SUCCESS, txHash: hexToBytes(TX_HASH)};
+    };
 
     expect(handle(newTestRuntime() as never)).toBe(`actions performed, tx=${TX_HASH}`);
+    expect(estimates).toBe(1);
+    expect(BigInt(gasLimit!)).toBe(MAX_WRITE_GAS);
+  });
+
+  test('returns "onReport reverted" and logs when onReport reverts inside the write', () => {
+    const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
+    evmMock.callContract = checkUpkeepMock(true);
+    evmMock.estimateGas = () => ({gas: 100_000n});
+    evmMock.writeReport = () => ({
+      txStatus: TxStatus.SUCCESS,
+      receiverContractExecutionStatus: EVM_PB.ReceiverContractExecutionStatus.REVERTED,
+      txHash: hexToBytes(TX_HASH),
+    });
+
+    const runtime = newTestRuntime();
+    expect(handle(runtime as never)).toBe(`onReport reverted, tx=${TX_HASH}`);
+    expect(runtime.getLogs().find((l) => l.includes('onReport reverted in tx'))).toBeDefined();
   });
 
   test('estimates and writes onReport with the checkUpkeep performData to the receiver', () => {
@@ -140,8 +174,7 @@ describe('voting-chain-robot workflow', () => {
     };
 
     expect(handle(newTestRuntime() as never)).toBe(`actions performed, tx=${TX_HASH}`);
-    expect(estimated.length).toBeGreaterThan(0);
-    expect(estimated.every((report) => report === PERFORM_DATA)).toBe(true);
+    expect(estimated).toEqual([PERFORM_DATA]);
     expect(receiver).toBe(RECEIVER);
   });
 
@@ -203,6 +236,12 @@ describe('voting-chain-robot workflow', () => {
 describe('initWorkflow', () => {
   test('MAX_WRITE_GAS is the current CRE write gas quota', () => {
     expect(MAX_WRITE_GAS).toBe(16_777_216n);
+  });
+
+  test('fitsWriteQuota leaves room for the 63/64 rule and the forwarder overhead', () => {
+    expect(fitsWriteQuota(MAX_ESTIMATE)).toBe(true);
+    expect(fitsWriteQuota(MAX_ESTIMATE + 1n)).toBe(false);
+    expect(fitsWriteQuota(MAX_WRITE_GAS - WRITE_OVERHEAD_GAS)).toBe(false);
   });
 
   test('production config covers the three voting chains', () => {
