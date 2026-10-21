@@ -21,7 +21,7 @@ type EvmClient = InstanceType<typeof cre.capabilities.EVMClient>;
 
 const EMPTY_CHECK_DATA = '0x' as Hex;
 
-// Gas quota per CRE write; every write requests all of it.
+// Gas the DON attaches to every write when no gasConfig is sent (the CRE write quota).
 export const MAX_WRITE_GAS = 16_777_216n;
 // Forwarder report verification and call overhead on top of onReport.
 export const WRITE_OVERHEAD_GAS = 250_000n;
@@ -56,7 +56,7 @@ function estimateOnReport(
   }
 }
 
-/// Signs `performData` and writes it to the receiver with the full write quota.
+/// Signs `performData` and writes it to the receiver with the DON default gas limit.
 function writeReport(
   runtime: Runtime<Config>,
   evmClient: EvmClient,
@@ -72,13 +72,7 @@ function writeReport(
       hashingAlgo: 'keccak256',
     })
     .result();
-  const reply = evmClient
-    .writeReport(runtime, {
-      receiver,
-      report,
-      gasConfig: {gasLimit: MAX_WRITE_GAS.toString()},
-    })
-    .result();
+  const reply = evmClient.writeReport(runtime, {receiver, report}).result();
 
   if (reply.txStatus !== TxStatus.SUCCESS) {
     runtime.log(
