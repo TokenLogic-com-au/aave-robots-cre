@@ -45,6 +45,9 @@ contract ExecutionChainRobotReceiverForkTest is Test {
   address internal constant BGD_KEEPER_BASE = 0xdb93e2712a8B36835078f8D28c70fCC95FD6d37c;
   address internal constant BGD_KEEPER_BNB = 0x870F5EBf5C13B73251283b2d883988066e2bb732;
 
+  // 128 storage words, ~270k gas to copy: over MAX_STATE_READ_GAS.
+  uint256 internal constant HEAVY_CALLDATA_LENGTH = 4_096;
+
   address internal anyone = makeAddr('anyone');
 
   function test_fork_ethereum_executesQueuedPayload() public {
@@ -106,6 +109,38 @@ contract ExecutionChainRobotReceiverForkTest is Test {
     receiver.onReport('', abi.encode(_ids(payloadId)));
     assertEq(
       uint8(receiver.PAYLOADS_CONTROLLER().getPayloadState(payloadId)),
+      uint8(IPayloadsControllerCore.PayloadState.Executed),
+      'payload not executed'
+    );
+  }
+
+  /// Anyone can create payloads: more than MAX_SKIP junk ones on top of a queued payload,
+  /// including one too large to read within MAX_STATE_READ_GAS, must not hide it.
+  function test_fork_polygon_junkPayloadsDontHideQueuedPayload() public {
+    vm.createSelectFork('polygon');
+    ExecutionChainRobotReceiver receiver = _deploy();
+    IPayloadsControllerCore controller = receiver.PAYLOADS_CONTROLLER();
+    uint40 payloadId = _createAndQueuePayload(controller);
+    vm.warp(block.timestamp + controller.getPayloadById(payloadId).delay + 1);
+
+    vm.startPrank(makeAddr('griefer'));
+    for (uint256 i = 0; i <= receiver.MAX_SKIP() + 10; i++) _createPayload(controller, 0);
+    uint40 heavyId = _createPayload(controller, HEAVY_CALLDATA_LENGTH);
+    vm.stopPrank();
+
+    // Storage written in this test is warm, while a real eth_call reads it cold.
+    vm.cool(address(controller));
+    (bool readable, ) = address(controller).staticcall{gas: receiver.MAX_STATE_READ_GAS()}(
+      abi.encodeCall(IPayloadsControllerCore.getPayloadState, (heavyId))
+    );
+    assertFalse(readable, 'heavy payload state should not be readable within MAX_STATE_READ_GAS');
+
+    vm.cool(address(controller));
+    _assertPicked(receiver, payloadId, true);
+    vm.prank(anyone);
+    receiver.onReport('', abi.encode(_ids(payloadId)));
+    assertEq(
+      uint8(controller.getPayloadState(payloadId)),
       uint8(IPayloadsControllerCore.PayloadState.Executed),
       'payload not executed'
     );
@@ -262,17 +297,7 @@ contract ExecutionChainRobotReceiverForkTest is Test {
   /// Creates a `NoopPayload` payload and queues it as the CrossChainController delivers a
   /// passed proposal from Ethereum governance.
   function _createAndQueuePayload(IPayloadsControllerCore controller) internal returns (uint40) {
-    IPayloadsControllerCore.ExecutionAction[]
-      memory actions = new IPayloadsControllerCore.ExecutionAction[](1);
-    actions[0] = IPayloadsControllerCore.ExecutionAction({
-      target: address(new NoopPayload()),
-      withDelegateCall: true,
-      accessLevel: PayloadsControllerUtils.AccessControl.Level_1,
-      value: 0,
-      signature: 'execute()',
-      callData: ''
-    });
-    uint40 payloadId = controller.createPayload(actions);
+    uint40 payloadId = _createPayload(controller, 0);
 
     vm.warp(block.timestamp + 1);
     vm.prank(_crossChainController(block.chainid));
@@ -287,6 +312,24 @@ contract ExecutionChainRobotReceiverForkTest is Test {
       'payload not queued'
     );
     return payloadId;
+  }
+
+  /// Creates a `NoopPayload` payload carrying `callDataLength` bytes of calldata.
+  function _createPayload(
+    IPayloadsControllerCore controller,
+    uint256 callDataLength
+  ) internal returns (uint40) {
+    IPayloadsControllerCore.ExecutionAction[]
+      memory actions = new IPayloadsControllerCore.ExecutionAction[](1);
+    actions[0] = IPayloadsControllerCore.ExecutionAction({
+      target: address(new NoopPayload()),
+      withDelegateCall: true,
+      accessLevel: PayloadsControllerUtils.AccessControl.Level_1,
+      value: 0,
+      signature: 'execute()',
+      callData: new bytes(callDataLength)
+    });
+    return controller.createPayload(actions);
   }
 
   function _crossChainController(uint256 chainId) internal pure returns (address) {

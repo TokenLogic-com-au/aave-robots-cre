@@ -57,6 +57,14 @@ interface IExecutionChainRobotReceiver is IAaveCREReceiver {
   /// from the latest payload.
   function MAX_SKIP() external pure returns (uint256);
 
+  /// @notice Max payloads a single `checkUpkeep` scans, bounding its gas whatever the number
+  /// of payloads created.
+  function MAX_SCANNED_PAYLOADS() external pure returns (uint256);
+
+  /// @notice Gas `checkUpkeep` allows for reading one payload's state; payloads whose state
+  /// can't be read within it are skipped.
+  function MAX_STATE_READ_GAS() external pure returns (uint256);
+
   /// @notice Exclude a payload from automation. Owner or guardian.
   /// @param id The payload id. Must not be disabled already.
   function disableAutomation(uint256 id) external;
