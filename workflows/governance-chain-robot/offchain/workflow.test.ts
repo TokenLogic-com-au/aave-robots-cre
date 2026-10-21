@@ -13,6 +13,7 @@ import {IAaveCREReceiverABI} from '../../shared/offchain/abi/IAaveCREReceiver';
 import {
   MAX_WRITE_GAS,
   WRITE_OVERHEAD_GAS,
+  configSchema,
   createReceiverHandler,
   fitsWriteQuota,
   initWorkflow,
@@ -144,18 +145,18 @@ describe('governance chain robot workflow', () => {
     expect(handle(newTestRuntime() as never)).toBe(`actions performed, tx=${TX_HASH}`);
   });
 
-  test('writes the signed performData to the receiver with the full write quota', () => {
+  test('writes the signed performData to the receiver without a gas config', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     evmMock.callContract = checkUpkeepMock(true);
     evmMock.estimateGas = () => ({gas: 100_000n});
-    let written: {receiver: Hex; gasLimit: bigint | undefined} | undefined;
+    let written: {receiver: Hex; gasConfig: unknown} | undefined;
     evmMock.writeReport = (input) => {
-      written = {receiver: bytesToHex(input.receiver), gasLimit: input.gasConfig?.gasLimit};
+      written = {receiver: bytesToHex(input.receiver), gasConfig: input.gasConfig};
       return {txStatus: TxStatus.SUCCESS, txHash: hexToBytes(TX_HASH)};
     };
 
     expect(handle(newTestRuntime() as never)).toBe(`actions performed, tx=${TX_HASH}`);
-    expect(written).toEqual({receiver: RECEIVER, gasLimit: MAX_WRITE_GAS});
+    expect(written).toEqual({receiver: RECEIVER, gasConfig: undefined});
   });
 
   test('returns "submit skipped" and logs when writeReport is not SUCCESS', () => {
@@ -204,6 +205,26 @@ describe('governance chain robot workflow', () => {
   test('returns "Network not found" for an unknown chain', () => {
     const badHandle = createReceiverHandler({...NETWORK, chainName: 'made-up-chain'});
     expect(badHandle(newTestRuntime() as never)).toBe('Network not found');
+  });
+});
+
+describe('configSchema', () => {
+  const config = (receiver: string) => ({
+    schedule: '* * * * *',
+    evms: [{chainName: CHAIN_NAME, receiver}],
+  });
+
+  test('normalizes the receiver address casing', () => {
+    const parsed = configSchema.parse(config('0x9aee0b04504cef83a65ac3f0e838d0593bcb2bc7'));
+    expect(parsed.evms[0].receiver).toBe('0x9AEE0B04504CeF83A65AC3f0e838D0593BCb2BC7');
+  });
+
+  test('accepts an empty receiver', () => {
+    expect(configSchema.parse(config('')).evms[0].receiver).toBe('');
+  });
+
+  test('rejects an invalid receiver', () => {
+    expect(() => configSchema.parse(config('0x1234'))).toThrow();
   });
 });
 

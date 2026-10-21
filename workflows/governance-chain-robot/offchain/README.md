@@ -7,8 +7,9 @@ Off-chain CRE workflow driving
 1. estimates `onReport(0x, performData)` and skips the tick if it reverts, or if
    `estimate * 64 / 63 + WRITE_OVERHEAD_GAS` (250k, forwarder overhead) exceeds the CRE
    write quota `MAX_WRITE_GAS` (16,777,216);
-2. signs `performData` and writes it with the full quota as gas limit, since `onReport`
-   catches reverting calls and a batch estimate could leave one action out of gas;
+2. signs `performData` and writes it without `gasConfig`, so the DON uses the full quota.
+   The estimate is never the gas limit: with too little gas `onReport` can succeed while
+   a Governance call or its a.DI forward fails;
 3. logs a failure if the tx or the receiver's `onReport` reverted.
 
 ## Config
