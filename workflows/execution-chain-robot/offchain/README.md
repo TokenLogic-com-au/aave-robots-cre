@@ -7,8 +7,8 @@ so a payload that reverts doesn't block the others.
 
 Each write is estimated first. A revert is skipped with a log, and so is an estimate where
 `estimate * 64 / 63 + WRITE_OVERHEAD_GAS` (250k for the forwarder) exceeds `MAX_WRITE_GAS`
-(16,777,216, the CRE write gas quota): it would fail and be retried every tick. The write
-requests the full quota as gas limit. A write whose `onReport` reverted inside the forwarder
+(16,777,216, the gas limit the DON gives every write): it would fail and be retried every
+tick. No `gasConfig` is sent, so writes get that DON default. A write whose `onReport` reverted inside the forwarder
 tx is logged as failed.
 
 ## Config
