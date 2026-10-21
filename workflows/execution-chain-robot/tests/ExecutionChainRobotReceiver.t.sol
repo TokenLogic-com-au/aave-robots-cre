@@ -78,6 +78,11 @@ contract ExecutionChainRobotReceiverTest is Test {
     new ExecutionChainRobotReceiver(controller, address(0), MAX_GAS_PRICE, owner, guardian);
   }
 
+  function test_constructor_revertsWith_InvalidMaxGasPrice() public {
+    vm.expectRevert(IExecutionChainRobotReceiver.InvalidMaxGasPrice.selector);
+    new ExecutionChainRobotReceiver(controller, oracle, 0, owner, guardian);
+  }
+
   function test_constants() public view {
     assertEq(robot.MAX_ACTIONS(), 5, 'unexpected MAX_ACTIONS');
     assertEq(robot.MAX_SKIP(), 20, 'unexpected MAX_SKIP');

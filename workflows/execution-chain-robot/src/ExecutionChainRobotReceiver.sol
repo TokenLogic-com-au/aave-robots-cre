@@ -51,6 +51,7 @@ contract ExecutionChainRobotReceiver is
   ) OwnableWithGuardian(initialOwner_, initialGuardian_) {
     require(payloadsController_ != address(0), InvalidPayloadsController());
     require(gasPriceOracle_ != address(0) || maxGasPrice_ == 0, GasPriceCapNotSupported());
+    require(gasPriceOracle_ == address(0) || maxGasPrice_ != 0, InvalidMaxGasPrice());
 
     PAYLOADS_CONTROLLER = IPayloadsControllerCore(payloadsController_);
     GAS_PRICE_ORACLE = gasPriceOracle_;
