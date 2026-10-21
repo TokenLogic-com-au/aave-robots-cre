@@ -52,7 +52,7 @@ contract DeployExecutionChainRobotReceiver is Script {
   }
 
   /// @dev Owner / guardian are the chain's governance executor and guardian. Only Ethereum
-  /// is gas capped, on Chainlink's Fast Gas feed, like BGD's keepers.
+  /// is gas capped, on Chainlink's Fast Gas feed.
   function getDeployConfig(uint256 chainId) public pure returns (DeployConfig memory) {
     if (chainId == ChainIds.MAINNET)
       return

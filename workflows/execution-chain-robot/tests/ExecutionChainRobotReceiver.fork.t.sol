@@ -33,11 +33,10 @@ contract NoopPayload {
   }
 }
 
-/// @dev Runs the deploy script on each chain, creates a trivial payload on the live
-/// PayloadsController, queues it as a bridged governance message would and checks the robot
-/// executes it once its delay has passed, agreeing with BGD's live keeper along the way.
+/// @dev On each chain: deploys via the script, queues a no-op payload on the live
+/// PayloadsController and checks the robot executes it once its delay has passed.
 contract ExecutionChainRobotReceiverForkTest is Test {
-  // BGD's keepers currently forwarded by CRE (Ethereum is the gas-capped variant).
+  // BGD's keepers (Ethereum is the gas-capped variant).
   address internal constant BGD_KEEPER_ETHEREUM = 0xBa37F9eDC52f57caFA3a13ddfD655797Cc4FE257;
   address internal constant BGD_KEEPER_AVALANCHE = 0x7B74938583Eb03e06042fcB651046BaF0bf15644;
   address internal constant BGD_KEEPER_POLYGON = 0x249396a890F89D47F89326d7EE116b1d374Fb3A9;
@@ -88,25 +87,21 @@ contract ExecutionChainRobotReceiverForkTest is Test {
     IExecutionChainRobotReceiver bgd = IExecutionChainRobotReceiver(BGD_KEEPER_ETHEREUM);
 
     assertEq(receiver.GAS_PRICE_ORACLE(), bgd.GAS_PRICE_ORACLE(), 'gas price oracle mismatch');
-    assertEq(receiver.getMaxGasPrice(), bgd.getMaxGasPrice(), 'max gas price mismatch');
 
     uint40 payloadId = _createAndQueuePayload(receiver.PAYLOADS_CONTROLLER());
     vm.warp(block.timestamp + receiver.PAYLOADS_CONTROLLER().getPayloadById(payloadId).delay + 1);
-    assertTrue(receiver.isGasPriceInRange(), 'live gas price above the cap');
+    assertTrue(receiver.isGasPriceInRange(), 'gas price should be under the cap');
     _assertPicked(receiver, payloadId, true);
 
-    vm.mockCall(
-      receiver.GAS_PRICE_ORACLE(),
-      abi.encodeCall(AggregatorInterface.latestAnswer, ()),
-      abi.encode(int256(receiver.getMaxGasPrice() + 1))
-    );
+    // Above both caps: the receiver's and whatever BGD's owner has set.
+    _mockGasPrice(receiver.GAS_PRICE_ORACLE(), type(int256).max);
     assertFalse(receiver.isGasPriceInRange(), 'gas price should be above the cap');
     (bool needed, ) = receiver.checkUpkeep('');
     assertFalse(needed, 'upkeep needed above the gas cap');
     (bool bgdNeeded, ) = IAaveCREReceiver(BGD_KEEPER_ETHEREUM).checkUpkeep('');
     assertFalse(bgdNeeded, 'BGD keeper upkeep needed above the gas cap');
 
-    // The cap only gates checkUpkeep, as in BGD's keeper.
+    // The cap only gates checkUpkeep.
     vm.prank(anyone);
     receiver.onReport('', abi.encode(_ids(payloadId)));
     assertEq(
@@ -136,9 +131,8 @@ contract ExecutionChainRobotReceiverForkTest is Test {
     receiver.onReport('', abi.encode(_ids(payloadId)));
   }
 
-  /// The ported executability check agrees with the live `executePayload` around every
-  /// boundary: right after queueing, at and after the end of the timelock, and around expiry.
-  /// Only `executionTime + 1` and `expiry - 1` are executable.
+  /// `canPayloadBeExecuted` agrees with the live `executePayload` at each timelock and expiry
+  /// boundary; only `executionTime + 1` and `expiry - 1` are executable.
   function test_fork_ethereum_canPayloadBeExecutedMatchesExecutePayload() public {
     vm.createSelectFork('mainnet');
     IPayloadsControllerCore controller = GovernanceV3Ethereum.PAYLOADS_CONTROLLER;
@@ -207,9 +201,8 @@ contract ExecutionChainRobotReceiverForkTest is Test {
     _assertPicked(receiver, payloadId, false);
   }
 
-  /// Both robots use the same PayloadsController and see the same executable payloads: BGD's
-  /// picks one of the (up to) MAX_ACTIONS newest at random, which must be among the ones the
-  /// receiver returns. No-op without a BGD keeper on the chain.
+  /// Same PayloadsController and `upkeepNeeded` as BGD's keeper, whose random pick must be among
+  /// the receiver's ids. No-op without a BGD keeper on the chain.
   function _assertAgreesWithBgdKeeper(
     ExecutionChainRobotReceiver receiver,
     address bgdKeeper,
@@ -257,10 +250,17 @@ contract ExecutionChainRobotReceiverForkTest is Test {
     assertEq(receiver.getMaxGasPrice(), config.maxGasPrice, 'max gas price');
     assertEq(receiver.owner(), config.owner, 'owner');
     assertEq(receiver.guardian(), config.guardian, 'guardian');
+
+    // Keeps the Ethereum tests independent of live gas prices; BGD's keeper reads the same feed.
+    if (config.gasPriceOracle != address(0)) _mockGasPrice(config.gasPriceOracle, 1 gwei);
   }
 
-  /// Creates a payload delegatecalling `NoopPayload.execute()` and queues it the way the
-  /// chain's CrossChainController delivers a passed proposal from Ethereum governance.
+  function _mockGasPrice(address oracle, int256 gasPrice) internal {
+    vm.mockCall(oracle, abi.encodeCall(AggregatorInterface.latestAnswer, ()), abi.encode(gasPrice));
+  }
+
+  /// Creates a `NoopPayload` payload and queues it as the CrossChainController delivers a
+  /// passed proposal from Ethereum governance.
   function _createAndQueuePayload(IPayloadsControllerCore controller) internal returns (uint40) {
     IPayloadsControllerCore.ExecutionAction[]
       memory actions = new IPayloadsControllerCore.ExecutionAction[](1);
