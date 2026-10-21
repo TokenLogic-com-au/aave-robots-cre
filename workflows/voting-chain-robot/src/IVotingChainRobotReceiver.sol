@@ -9,9 +9,9 @@ import {AggregatorInterface} from 'aave-v3-origin/contracts/dependencies/chainli
 import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
 
 /// @title IVotingChainRobotReceiver
+/// @author Aave Labs
 /// @notice Robot automating the Governance V3 voting machine of a voting chain: starts a
-/// proposal's vote once its storage roots are registered and closes it (sending the result to
-/// Ethereum) once voting ends.
+/// proposal's vote once its storage roots are registered and closes it once voting ends.
 /// @dev `checkData` is unused; `performData` and the `report` are `abi.encode(ActionWithId[])`.
 interface IVotingChainRobotReceiver is IAaveCREReceiver {
   /// @notice Actions the robot performs on a proposal.
@@ -36,9 +36,9 @@ interface IVotingChainRobotReceiver is IAaveCREReceiver {
   event ActionSucceeded(uint256 indexed id, ProposalAction indexed action);
 
   /// @notice Emitted when a proposal is excluded from or included back into automation.
-  /// @param proposalId The proposal updated.
+  /// @param id The proposal id.
   /// @param disabled Whether the proposal is now excluded from automation.
-  event ProposalAutomationDisabled(uint256 indexed proposalId, bool disabled);
+  event AutomationDisabled(uint256 indexed id, bool disabled);
 
   /// @notice Emitted when the max gas price is updated.
   /// @param maxGasPrice The new max gas price, in wei.
@@ -51,13 +51,14 @@ interface IVotingChainRobotReceiver is IAaveCREReceiver {
   error NoActionCanBePerformed();
 
   /// @notice Thrown when disabling / enabling a proposal that already has that status.
-  /// @param proposalId The proposal updated.
-  /// @param disabled The status that was requested.
-  error ProposalStatusUnchanged(uint256 proposalId, bool disabled);
+  /// @param id The proposal id.
+  error AutomationStatusUnchanged(uint256 id);
 
   /// @notice Thrown when setting the max gas price it already has.
-  /// @param maxGasPrice The value that was requested.
-  error MaxGasPriceUnchanged(uint256 maxGasPrice);
+  error MaxGasPriceUnchanged();
+
+  /// @notice Thrown when deploying with a gas price oracle and a zero max gas price.
+  error InvalidMaxGasPrice();
 
   /// @notice Thrown when setting a max gas price on a robot deployed without gas price oracle.
   error GasPriceCapNotSupported();
@@ -84,12 +85,12 @@ interface IVotingChainRobotReceiver is IAaveCREReceiver {
   function PAGE_SIZE() external pure returns (uint256);
 
   /// @notice Exclude a proposal from automation. Owner or guardian.
-  /// @param proposalId The proposal to disable. Must not be disabled already.
-  function disableAutomation(uint256 proposalId) external;
+  /// @param id The proposal id. Must not be disabled already.
+  function disableAutomation(uint256 id) external;
 
   /// @notice Include a previously disabled proposal back into automation. Owner-only.
-  /// @param proposalId The proposal to enable. Must be currently disabled.
-  function enableAutomation(uint256 proposalId) external;
+  /// @param id The proposal id. Must be currently disabled.
+  function enableAutomation(uint256 id) external;
 
   /// @notice Set the gas price above which `checkUpkeep` reports nothing. Owner or guardian.
   /// @param maxGasPrice The max gas price, in wei. Must differ from the current one.
@@ -103,6 +104,6 @@ interface IVotingChainRobotReceiver is IAaveCREReceiver {
   function isGasPriceInRange() external view returns (bool);
 
   /// @notice Whether a proposal is excluded from automation.
-  /// @param proposalId The proposal to query.
-  function isDisabled(uint256 proposalId) external view returns (bool);
+  /// @param id The proposal id.
+  function isDisabled(uint256 id) external view returns (bool);
 }
