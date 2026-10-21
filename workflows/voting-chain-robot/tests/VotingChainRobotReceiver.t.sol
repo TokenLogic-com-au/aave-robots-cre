@@ -91,12 +91,17 @@ contract VotingChainRobotReceiverTest is Test {
 
   function test_constructor_revertsWith_InvalidAddress_whenVotingMachineIsZero() public {
     vm.expectRevert(IVotingChainRobotReceiver.InvalidAddress.selector);
-    new VotingChainRobotReceiver(address(0), gasOracle, 0, owner, guardian);
+    new VotingChainRobotReceiver(address(0), gasOracle, MAX_GAS_PRICE, owner, guardian);
   }
 
   function test_constructor_revertsWith_GasPriceCapNotSupported() public {
     vm.expectRevert(IVotingChainRobotReceiver.GasPriceCapNotSupported.selector);
     _deploy(address(0), 1);
+  }
+
+  function test_constructor_revertsWith_InvalidMaxGasPrice() public {
+    vm.expectRevert(IVotingChainRobotReceiver.InvalidMaxGasPrice.selector);
+    _deploy(gasOracle, 0);
   }
 
   function test_constants() public view {
@@ -410,7 +415,7 @@ contract VotingChainRobotReceiverTest is Test {
 
   function test_disableAutomation_byOwnerOrGuardian() public {
     vm.expectEmit(address(robot));
-    emit IVotingChainRobotReceiver.ProposalAutomationDisabled(1, true);
+    emit IVotingChainRobotReceiver.AutomationDisabled(1, true);
     vm.prank(owner);
     robot.disableAutomation(1);
     assertTrue(robot.isDisabled(1), 'proposal not disabled by owner');
@@ -428,13 +433,13 @@ contract VotingChainRobotReceiverTest is Test {
     robot.disableAutomation(1);
   }
 
-  function test_disableAutomation_revertsWith_ProposalStatusUnchanged() public {
+  function test_disableAutomation_revertsWith_AutomationStatusUnchanged() public {
     vm.prank(guardian);
     robot.disableAutomation(1);
 
     vm.prank(guardian);
     vm.expectRevert(
-      abi.encodeWithSelector(IVotingChainRobotReceiver.ProposalStatusUnchanged.selector, 1, true)
+      abi.encodeWithSelector(IVotingChainRobotReceiver.AutomationStatusUnchanged.selector, 1)
     );
     robot.disableAutomation(1);
   }
@@ -444,7 +449,7 @@ contract VotingChainRobotReceiverTest is Test {
     robot.disableAutomation(1);
 
     vm.expectEmit(address(robot));
-    emit IVotingChainRobotReceiver.ProposalAutomationDisabled(1, false);
+    emit IVotingChainRobotReceiver.AutomationDisabled(1, false);
     vm.prank(owner);
     robot.enableAutomation(1);
     assertFalse(robot.isDisabled(1), 'proposal still disabled');
@@ -459,10 +464,10 @@ contract VotingChainRobotReceiverTest is Test {
     robot.enableAutomation(1);
   }
 
-  function test_enableAutomation_revertsWith_ProposalStatusUnchanged() public {
+  function test_enableAutomation_revertsWith_AutomationStatusUnchanged() public {
     vm.prank(owner);
     vm.expectRevert(
-      abi.encodeWithSelector(IVotingChainRobotReceiver.ProposalStatusUnchanged.selector, 1, false)
+      abi.encodeWithSelector(IVotingChainRobotReceiver.AutomationStatusUnchanged.selector, 1)
     );
     robot.enableAutomation(1);
   }
@@ -490,7 +495,7 @@ contract VotingChainRobotReceiverTest is Test {
   function test_setMaxGasPrice_revertsWith_MaxGasPriceUnchanged() public {
     vm.prank(owner);
     vm.expectRevert(
-      abi.encodeWithSelector(IVotingChainRobotReceiver.MaxGasPriceUnchanged.selector, MAX_GAS_PRICE)
+      abi.encodeWithSelector(IVotingChainRobotReceiver.MaxGasPriceUnchanged.selector)
     );
     robot.setMaxGasPrice(MAX_GAS_PRICE);
   }

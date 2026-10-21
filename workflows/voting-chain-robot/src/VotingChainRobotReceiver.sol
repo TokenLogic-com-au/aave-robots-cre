@@ -15,13 +15,10 @@ import {IVotingChainRobotReceiver} from './IVotingChainRobotReceiver.sol';
 
 /// @title VotingChainRobotReceiver
 /// @author Aave Labs
-/// @notice Receives reports from the CRE workflow and automates a Governance V3 voting
-/// machine: starts votes once their storage roots are registered and closes finished ones.
-/// Native CRE port of BGD Labs' `VotingChainRobotKeeper` and, with a gas price oracle, of
-/// `GasCappedVotingChainRobotKeeper`, without their storage roots requests: the roots are
-/// registered on the `DataWarehouse` by the governance storage roots CRE workflow.
-/// @dev `onReport` is permissionless, like the keeper's `performUpkeep`: `startProposalVote`
-/// and `closeAndSendVote` are permissionless themselves.
+/// @notice Receives reports from the CRE workflow to start and close Governance V3 votes.
+/// Native CRE port of BGD's `VotingChainRobotKeeper` / `GasCappedVotingChainRobotKeeper`,
+/// without the storage roots requests (the governance storage roots workflow registers them).
+/// @dev `onReport` is permissionless: `startProposalVote` and `closeAndSendVote` are too.
 contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuardian, Rescuable {
   /// @inheritdoc IVotingChainRobotReceiver
   IVotingMachineWithProofs public immutable override VOTING_MACHINE;
@@ -46,13 +43,12 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
 
   uint256 internal _maxGasPrice;
 
-  // A denylist rather than an allowlist: every new proposal must be automated without
-  // any configuration.
-  mapping(uint256 proposalId => bool) internal _disabled;
+  // A denylist: every new proposal is automated without configuration.
+  mapping(uint256 id => bool) internal _disabled;
 
   /// @param votingMachine_ The voting machine to automate.
   /// @param gasPriceOracle_ The network gas price feed capping `checkUpkeep`, or zero for no cap.
-  /// @param maxGasPrice_ The initial max gas price, in wei. Must be zero without gas price oracle.
+  /// @param maxGasPrice_ The initial max gas price, in wei. Non-zero with an oracle, zero without.
   /// @param initialOwner_ The address of the initial owner.
   /// @param initialGuardian_ The address of the initial guardian.
   constructor(
@@ -65,6 +61,8 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
     require(votingMachine_ != address(0), InvalidAddress());
 
     require(gasPriceOracle_ != address(0) || maxGasPrice_ == 0, GasPriceCapNotSupported());
+
+    require(gasPriceOracle_ == address(0) || maxGasPrice_ != 0, InvalidMaxGasPrice());
 
     VOTING_MACHINE = IVotingMachineWithProofs(votingMachine_);
     VOTING_STRATEGY = VOTING_MACHINE.VOTING_STRATEGY();
@@ -79,32 +77,30 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
   }
 
   /// @inheritdoc IVotingChainRobotReceiver
-  function disableAutomation(uint256 proposalId) external onlyOwnerOrGuardian {
-    require(!_disabled[proposalId], ProposalStatusUnchanged(proposalId, true));
-    _disabled[proposalId] = true;
-    emit ProposalAutomationDisabled(proposalId, true);
+  function disableAutomation(uint256 id) external onlyOwnerOrGuardian {
+    require(!_disabled[id], AutomationStatusUnchanged(id));
+    _disabled[id] = true;
+    emit AutomationDisabled(id, true);
   }
 
   /// @inheritdoc IVotingChainRobotReceiver
-  function enableAutomation(uint256 proposalId) external onlyOwner {
-    require(_disabled[proposalId], ProposalStatusUnchanged(proposalId, false));
-    _disabled[proposalId] = false;
-    emit ProposalAutomationDisabled(proposalId, false);
+  function enableAutomation(uint256 id) external onlyOwner {
+    require(_disabled[id], AutomationStatusUnchanged(id));
+    _disabled[id] = false;
+    emit AutomationDisabled(id, false);
   }
 
   /// @inheritdoc IVotingChainRobotReceiver
   function setMaxGasPrice(uint256 maxGasPrice) external onlyOwnerOrGuardian {
     require(address(GAS_PRICE_ORACLE) != address(0), GasPriceCapNotSupported());
-    require(maxGasPrice != _maxGasPrice, MaxGasPriceUnchanged(maxGasPrice));
+    require(maxGasPrice != _maxGasPrice, MaxGasPriceUnchanged());
     _maxGasPrice = maxGasPrice;
     emit MaxGasPriceSet(maxGasPrice);
   }
 
   /// @inheritdoc IAaveCREReceiver
-  /// @dev Reads the proposals with a vote configuration from the latest backwards, one page of
-  /// `PAGE_SIZE` at a time, and reads the next page only while the current one had an action
-  /// (as BGD's keeper does). Stops at `MAX_ACTIONS`. Reports nothing while the gas price is
-  /// above the cap.
+  /// @dev Pages through the proposals from the latest backwards, reading the next page only
+  /// while the current one had an action. Nothing while the gas price is above the cap.
   function checkUpkeep(
     bytes calldata /* checkData */
   ) external view returns (bool upkeepNeeded, bytes memory performData) {
@@ -129,10 +125,8 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
   }
 
   /// @inheritdoc IReceiver
-  /// @dev Performs the actions oldest proposal first, each only if it still applies and the
-  /// proposal is not disabled. A reverting action is caught so it can't block the rest of the
-  /// batch. Reverts `NoActionCanBePerformed` if nothing was performed, so a stale report fails
-  /// `estimateGas`.
+  /// @dev Oldest proposal first; skips actions no longer due and catches reverting ones.
+  /// Reverts `NoActionCanBePerformed` if nothing ran, so a stale report fails `estimateGas`.
   function onReport(bytes calldata /* metadata */, bytes calldata report) external override {
     ActionWithId[] memory actions = abi.decode(report, (ActionWithId[]));
     bool performed = false;
@@ -155,8 +149,8 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
   }
 
   /// @inheritdoc IVotingChainRobotReceiver
-  function isDisabled(uint256 proposalId) external view returns (bool) {
-    return _disabled[proposalId];
+  function isDisabled(uint256 id) external view returns (bool) {
+    return _disabled[id];
   }
 
   /// @inheritdoc IERC165
@@ -167,8 +161,7 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
       interfaceId == type(IERC165).interfaceId;
   }
 
-  /// @dev Appends the actions of one page of proposal ids to `actions`, from index `count`,
-  /// and returns the new count.
+  /// @dev Appends one page's actions to `actions` from index `count`; returns the new count.
   function _collectActions(
     uint256 skip,
     ActionWithId[] memory actions,
@@ -192,8 +185,7 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
     return (_canCreateVote(state, proposalId), ProposalAction.PerformCreateVote);
   }
 
-  /// @dev Performs `a` if it still applies and the proposal is not disabled. Returns whether
-  /// it was performed.
+  /// @dev Performs `a` if still due and the proposal isn't disabled; returns whether it ran.
   function _performAction(ActionWithId memory a) internal returns (bool) {
     if (_disabled[a.id]) return false;
 
@@ -215,8 +207,7 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
     return true;
   }
 
-  /// @dev The vote isn't created and every root `startProposalVote` checks is registered for
-  /// the proposal's L1 block hash.
+  /// @dev The vote isn't created and the roots of its L1 block hash are registered.
   function _canCreateVote(
     IVotingMachineWithProofs.ProposalState state,
     uint256 proposalId
@@ -235,9 +226,8 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, OwnableWithGuard
     return state == IVotingMachineWithProofs.ProposalState.Finished;
   }
 
-  /// @dev Whether the voting tokens' roots (and the stkAAVE exchange rate slot) and the
-  /// governance representatives root of `blockHash` are registered, the same checks as
-  /// `startProposalVote`.
+  /// @dev The voting strategy's roots and the governance representatives root, the same checks
+  /// as `startProposalVote`.
   function _hasRequiredRoots(bytes32 blockHash) internal view returns (bool) {
     try VOTING_STRATEGY.hasRequiredRoots(blockHash) {
       return DATA_WAREHOUSE.getStorageRoots(GOVERNANCE, blockHash) != bytes32(0);
