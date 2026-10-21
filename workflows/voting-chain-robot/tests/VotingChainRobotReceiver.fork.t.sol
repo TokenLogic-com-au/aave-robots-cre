@@ -25,6 +25,7 @@ import {DeployVotingChainRobotReceiver} from '../scripts/DeployVotingChainRobotR
 contract VotingChainRobotReceiverForkTest is Test {
   struct ChainSetup {
     string rpcAlias;
+    uint256 forkBlock;
     address liveKeeper;
     address crossChainController;
     address l1VotingPortal;
@@ -43,8 +44,11 @@ contract VotingChainRobotReceiverForkTest is Test {
   address internal constant LIVE_KEEPER_AVALANCHE = 0x2cf0fA5b36F0f89a5EA18F835d1375974a7720B8;
   address internal constant LIVE_KEEPER_POLYGON = 0x1180eE41eC15Dd0accC13a1e646B3152bECFf8F6;
 
-  // Block on Avalanche where proposal 531 is being voted on (ends at 1792355163).
-  uint256 internal constant AVALANCHE_BLOCK_PROPOSAL_531_ACTIVE = 97735679;
+  // Pinned so the live keeper's state and the Fast Gas answer (~0.16 gwei) don't change under
+  // the tests. On Avalanche, proposal 531 is being voted on (ends at 1792355163).
+  uint256 internal constant ETHEREUM_BLOCK = 26207320;
+  uint256 internal constant AVALANCHE_BLOCK = 97735679;
+  uint256 internal constant POLYGON_BLOCK = 95650092;
   uint256 internal constant AVALANCHE_PROPOSAL_531 = 531;
 
   // Short, so warping past its end leaves other live votes untouched.
@@ -61,6 +65,7 @@ contract VotingChainRobotReceiverForkTest is Test {
     _runLifecycle(
       ChainSetup({
         rpcAlias: 'mainnet',
+        forkBlock: ETHEREUM_BLOCK,
         liveKeeper: LIVE_KEEPER_ETHEREUM,
         crossChainController: GovernanceV3Ethereum.CROSS_CHAIN_CONTROLLER,
         l1VotingPortal: GovernanceV3Ethereum.VOTING_PORTAL_ETH_ETH,
@@ -74,6 +79,7 @@ contract VotingChainRobotReceiverForkTest is Test {
     _runLifecycle(
       ChainSetup({
         rpcAlias: 'avalanche',
+        forkBlock: AVALANCHE_BLOCK,
         liveKeeper: LIVE_KEEPER_AVALANCHE,
         crossChainController: GovernanceV3Avalanche.CROSS_CHAIN_CONTROLLER,
         l1VotingPortal: GovernanceV3Ethereum.VOTING_PORTAL_ETH_AVAX,
@@ -87,6 +93,7 @@ contract VotingChainRobotReceiverForkTest is Test {
     _runLifecycle(
       ChainSetup({
         rpcAlias: 'polygon',
+        forkBlock: POLYGON_BLOCK,
         liveKeeper: LIVE_KEEPER_POLYGON,
         crossChainController: GovernanceV3Polygon.CROSS_CHAIN_CONTROLLER,
         l1VotingPortal: GovernanceV3Ethereum.VOTING_PORTAL_ETH_POL,
@@ -98,7 +105,7 @@ contract VotingChainRobotReceiverForkTest is Test {
 
   /// Closes a real vote: proposal 531 on Avalanche, once its voting period is over.
   function test_fork_avalanche_closesLiveProposal() public {
-    vm.createSelectFork('avalanche', AVALANCHE_BLOCK_PROPOSAL_531_ACTIVE);
+    vm.createSelectFork('avalanche', AVALANCHE_BLOCK);
     VotingChainRobotReceiver robot = VotingChainRobotReceiver(
       new DeployVotingChainRobotReceiver().run()
     );
@@ -134,7 +141,7 @@ contract VotingChainRobotReceiverForkTest is Test {
 
   /// At the cap the due action is reported; above it nothing is, as the live keeper does.
   function test_fork_ethereum_respectsGasPriceCap() public {
-    vm.createSelectFork('mainnet');
+    vm.createSelectFork('mainnet', ETHEREUM_BLOCK);
     DeployVotingChainRobotReceiver script = new DeployVotingChainRobotReceiver();
     DeployVotingChainRobotReceiver.DeployConfig memory config = script.getDeployConfig(
       block.chainid
@@ -167,7 +174,7 @@ contract VotingChainRobotReceiverForkTest is Test {
   /// Deploys with the script, then takes a freshly bridged proposal through vote start (once
   /// its roots are registered) and close.
   function _runLifecycle(ChainSetup memory chain) internal {
-    vm.createSelectFork(chain.rpcAlias);
+    vm.createSelectFork(chain.rpcAlias, chain.forkBlock);
     DeployVotingChainRobotReceiver script = new DeployVotingChainRobotReceiver();
     DeployVotingChainRobotReceiver.DeployConfig memory config = script.getDeployConfig(
       block.chainid
