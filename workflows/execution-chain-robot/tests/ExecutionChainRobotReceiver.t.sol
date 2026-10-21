@@ -86,6 +86,8 @@ contract ExecutionChainRobotReceiverTest is Test {
   function test_constants() public view {
     assertEq(robot.MAX_ACTIONS(), 5, 'unexpected MAX_ACTIONS');
     assertEq(robot.MAX_SKIP(), 20, 'unexpected MAX_SKIP');
+    assertEq(robot.MAX_SCANNED_PAYLOADS(), 100, 'unexpected MAX_SCANNED_PAYLOADS');
+    assertEq(robot.MAX_STATE_READ_GAS(), 150_000, 'unexpected MAX_STATE_READ_GAS');
   }
 
   function test_supportsInterface() public view {
@@ -158,16 +160,76 @@ contract ExecutionChainRobotReceiverTest is Test {
     }
   }
 
-  /// An executable payload below `nonExecutable` newer ones is found iff they are at most MAX_SKIP.
-  function test_fuzz_checkUpkeep_maxSkip(uint256 nonExecutable) public {
+  /// An executable payload below `nonExecutable` newer ones (in the timelock or in a final
+  /// state) is found iff they are at most MAX_SKIP.
+  function test_fuzz_checkUpkeep_maxSkip(uint256 nonExecutable, uint8 stateSeed) public {
     nonExecutable = bound(nonExecutable, 0, robot.MAX_SKIP() + 5);
+    uint256 kind = bound(stateSeed, 0, 3);
     uint40 total = uint40(nonExecutable) + 1;
     _mockPayloadsCount(total);
     _mockExecutable(0);
-    for (uint40 i = 1; i < total; i++) _mockNotExecutable(i);
+    for (uint40 i = 1; i < total; i++) {
+      if (kind == 0) _mockNotExecutable(i);
+      else _mockPayload(i, IPayloadsControllerCore.PayloadState(kind + 2), _executableQueuedAt());
+    }
 
     (bool needed, ) = robot.checkUpkeep('');
     assertEq(needed, nonExecutable <= robot.MAX_SKIP(), 'unexpected upkeepNeeded');
+  }
+
+  /// Anyone can create payloads: `Created` ones don't count toward MAX_SKIP and are never
+  /// loaded in full, so junk payloads can't hide a queued one within MAX_SCANNED_PAYLOADS.
+  function test_fuzz_checkUpkeep_createdPayloadsDontCountAsSkipped(uint256 junk) public {
+    junk = bound(junk, robot.MAX_SKIP() + 1, robot.MAX_SCANNED_PAYLOADS() - 1);
+    uint40 total = uint40(junk) + 1;
+    _mockPayloadsCount(total);
+    _mockExecutable(0);
+    for (uint40 i = 1; i < total; i++) _mockCreated(i);
+
+    vm.expectCall(
+      controller,
+      abi.encodeCall(IPayloadsControllerCore.getPayloadById, (total - 1)),
+      0
+    );
+    (bool needed, bytes memory performData) = robot.checkUpkeep('');
+    assertTrue(needed, 'queued payload hidden by created ones');
+    assertEq(_decode(performData), _ids(0), 'unexpected payload ids');
+  }
+
+  /// Payloads whose state read fails (e.g. runs out of MAX_STATE_READ_GAS) are skipped uncounted.
+  function test_checkUpkeep_unreadablePayloadsDontCountAsSkipped() public {
+    uint40 total = uint40(robot.MAX_SKIP()) + 10;
+    _mockPayloadsCount(total);
+    _mockExecutable(0);
+    for (uint40 i = 1; i < total; i++) {
+      vm.mockCallRevert(
+        controller,
+        abi.encodeCall(IPayloadsControllerCore.getPayloadState, (i)),
+        ''
+      );
+    }
+
+    (bool needed, bytes memory performData) = robot.checkUpkeep('');
+    assertTrue(needed, 'queued payload hidden by unreadable ones');
+    assertEq(_decode(performData), _ids(0), 'unexpected payload ids');
+  }
+
+  /// The scan stops after MAX_SCANNED_PAYLOADS payloads, whatever their state.
+  function test_fuzz_checkUpkeep_maxScannedPayloads(uint256 junk) public {
+    uint256 maxScanned = robot.MAX_SCANNED_PAYLOADS();
+    junk = bound(junk, maxScanned - 5, maxScanned + 5);
+    uint40 total = uint40(junk) + 1;
+    _mockPayloadsCount(total);
+    _mockExecutable(0);
+    for (uint40 i = 1; i < total; i++) _mockCreated(i);
+
+    vm.expectCall(
+      controller,
+      abi.encodeWithSelector(IPayloadsControllerCore.getPayloadState.selector),
+      uint64(junk + 1 > maxScanned ? maxScanned : junk + 1)
+    );
+    (bool needed, ) = robot.checkUpkeep('');
+    assertEq(needed, junk < maxScanned, 'unexpected upkeepNeeded');
   }
 
   function test_checkUpkeep_executablePayloadResetsSkipCount() public {
@@ -465,6 +527,15 @@ contract ExecutionChainRobotReceiverTest is Test {
       abi.encodeCall(IPayloadsControllerCore.getPayloadById, (payloadId)),
       abi.encode(payload)
     );
+    vm.mockCall(
+      controller,
+      abi.encodeCall(IPayloadsControllerCore.getPayloadState, (payloadId)),
+      abi.encode(state)
+    );
+  }
+
+  function _mockCreated(uint40 payloadId) internal {
+    _mockPayload(payloadId, IPayloadsControllerCore.PayloadState.Created, 0);
   }
 
   function _mockPayloadsCount(uint40 count) internal {

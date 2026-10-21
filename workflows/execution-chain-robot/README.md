@@ -34,8 +34,9 @@ execution-chain-robot/
   the gas price is above the cap. Otherwise walks back from the latest payload collecting
   executable ones (`Queued`, not expired and past `queuedAt + delay`, as `executePayload`
   requires), oldest first, up to `MAX_ACTIONS` (5). It stops after `MAX_SKIP` + 1 (21)
-  consecutive non-executable payloads; an executable one resets the count and disabled ones
-  aren't counted.
+  consecutive non-executable payloads (an executable one resets the count) or
+  `MAX_SCANNED_PAYLOADS` (100) scanned. Disabled and `Created` payloads aren't counted, and
+  each state read gets at most `MAX_STATE_READ_GAS` (150k).
 - `onReport(metadata, uint40[] payloadIds)` — calls `PAYLOADS_CONTROLLER.executePayload` for
   each payload still executable and not disabled, emitting `ActionSucceeded(id)`. Reverts
   `NoActionCanBePerformed` if none was executed.
@@ -54,6 +55,14 @@ check it. Other chains have no oracle and no cap.
 - BGD shuffles the executable payloads with `blockhash` and executes one per upkeep. CRE
   nodes may read different blocks, so `checkUpkeep` returns all of them and the workflow
   writes one report per payload: a reverting payload only fails its own `estimateGas`.
+- `createPayload` is permissionless, so BGD's scan can be stopped short by 21 junk payloads
+  created after a queued one. Here `Created` payloads don't count toward `MAX_SKIP`, only
+  queued payloads are loaded in full, and a state read that doesn't fit `MAX_STATE_READ_GAS`
+  (junk with large actions) is skipped. `MAX_SCANNED_PAYLOADS` bounds `checkUpkeep`: measured
+  on an Arbitrum fork with cold storage, 541k gas for the live payloads, 2.2M with 100 minimal
+  junk payloads and ~15M worst case (100 junk payloads at the 150k read cap). The residual
+  limit: more than 100 junk payloads created after a queued one still hide it until they
+  expire (35 days); it can be executed manually or by a report.
 - The workflow skips payloads too large for the CRE write gas quota; those need a manual
   `executePayload`.
 - `disableAutomation` / `setMaxGasPrice` are also open to the guardian, setters revert when
@@ -68,8 +77,9 @@ check it. Other chains have no oracle and no cap.
   revert `AutomationStatusUnchanged` if the status wouldn't change and emit
   `AutomationDisabled(id, disabled)`.
 - `setMaxGasPrice(maxGasPrice)` — owner or guardian, so the cap can follow the gas market
-  without a vote. Reverts `MaxGasPriceUnchanged`, or `GasPriceCapNotSupported` without an
-  oracle. Emits `MaxGasPriceSet`.
+  without a vote. `setMaxGasPrice(0)` is the guardian's emergency pause on Ethereum (the
+  constructor rejects 0 to catch deploy mistakes, the setter allows it on purpose). Reverts
+  `MaxGasPriceUnchanged`, or `GasPriceCapNotSupported` without an oracle. Emits `MaxGasPriceSet`.
 - The contract is `Rescuable`; the owner is the rescue guardian.
 
 ## Testing
@@ -85,7 +95,8 @@ On every chain, the fork suite runs the deploy script, creates a payload on the 
 `PayloadsController`, queues it as the `CrossChainController` delivers a passed proposal, and
 checks the robot picks it only after its delay and executes it, agreeing with BGD's live
 keeper where there is one. The Fast Gas feed is mocked, so results don't depend on live gas.
-It also checks the gas cap, that expired payloads are skipped, and the harness's
+It also checks that 30+ junk payloads (one too large to read) created on Polygon after a
+queued payload don't hide it, the gas cap, that expired payloads are skipped, and the harness's
 `canPayloadBeExecuted` against `executePayload` at each timelock and expiry boundary.
 
 ## Deployment

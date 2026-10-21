@@ -33,6 +33,12 @@ contract ExecutionChainRobotReceiver is
   /// @inheritdoc IExecutionChainRobotReceiver
   uint256 public constant override MAX_SKIP = 20;
 
+  /// @inheritdoc IExecutionChainRobotReceiver
+  uint256 public constant override MAX_SCANNED_PAYLOADS = 100;
+
+  /// @inheritdoc IExecutionChainRobotReceiver
+  uint256 public constant override MAX_STATE_READ_GAS = 150_000;
+
   uint256 internal _maxGasPrice;
 
   mapping(uint256 id => bool) internal _disabled;
@@ -88,7 +94,9 @@ contract ExecutionChainRobotReceiver is
 
   /// @inheritdoc IAaveCREReceiver
   /// @dev Walks back from the latest payload until `MAX_SKIP` + 1 consecutive non-executable
-  /// ones (an executable one resets the count, disabled ones aren't counted) or `MAX_ACTIONS` found.
+  /// ones, `MAX_ACTIONS` found or `MAX_SCANNED_PAYLOADS` scanned. An executable payload resets the
+  /// count; disabled and `Created` ones aren't counted, since anyone can create payloads, nor are
+  /// ones whose state can't be read within `MAX_STATE_READ_GAS`.
   function checkUpkeep(
     bytes calldata /* checkData */
   ) external view returns (bool upkeepNeeded, bytes memory performData) {
@@ -97,12 +105,28 @@ contract ExecutionChainRobotReceiver is
     uint40[] memory found = new uint40[](MAX_ACTIONS);
     uint256 count = 0;
     uint256 skipCount = 0;
+    uint256 scanned = 0;
     uint40 index = PAYLOADS_CONTROLLER.getPayloadsCount();
 
-    while (index != 0 && skipCount <= MAX_SKIP && count < MAX_ACTIONS) {
+    while (
+      index != 0 && skipCount <= MAX_SKIP && count < MAX_ACTIONS && scanned < MAX_SCANNED_PAYLOADS
+    ) {
       index--;
+      scanned++;
       if (_disabled[index]) continue;
-      if (_canPayloadBeExecuted(index)) {
+
+      // `getPayloadState` copies the whole payload, so junk with large actions could otherwise
+      // push checkUpkeep past the eth_call gas cap.
+      IPayloadsControllerCore.PayloadState state;
+      try PAYLOADS_CONTROLLER.getPayloadState{gas: MAX_STATE_READ_GAS}(index) returns (
+        IPayloadsControllerCore.PayloadState s
+      ) {
+        state = s;
+      } catch {
+        continue;
+      }
+      if (state == IPayloadsControllerCore.PayloadState.Created) continue;
+      if (state == IPayloadsControllerCore.PayloadState.Queued && _isPastDelay(index)) {
         found[count++] = index;
         skipCount = 0;
       } else {
@@ -161,10 +185,16 @@ contract ExecutionChainRobotReceiver is
 
   /// @dev Same condition `executePayload` enforces: queued (not expired) and past its delay.
   function _canPayloadBeExecuted(uint40 payloadId) internal view returns (bool) {
-    IPayloadsControllerCore.Payload memory payload = PAYLOADS_CONTROLLER.getPayloadById(payloadId);
     return
-      payload.state == IPayloadsControllerCore.PayloadState.Queued &&
-      block.timestamp > payload.queuedAt + payload.delay;
+      PAYLOADS_CONTROLLER.getPayloadState(payloadId) ==
+      IPayloadsControllerCore.PayloadState.Queued &&
+      _isPastDelay(payloadId);
+  }
+
+  /// @dev Only called on queued payloads, so the full payload is never loaded for junk ones.
+  function _isPastDelay(uint40 payloadId) internal view returns (bool) {
+    IPayloadsControllerCore.Payload memory payload = PAYLOADS_CONTROLLER.getPayloadById(payloadId);
+    return block.timestamp > payload.queuedAt + payload.delay;
   }
 
   /// @inheritdoc Rescuable
