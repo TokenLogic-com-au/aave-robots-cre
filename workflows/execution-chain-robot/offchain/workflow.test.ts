@@ -1,5 +1,6 @@
 import {describe, expect} from 'bun:test';
 import {TxStatus, getNetwork} from '@chainlink/cre-sdk';
+import {EVM_PB} from '@chainlink/cre-sdk/pb';
 import {EvmMock, newTestRuntime, test} from '@chainlink/cre-sdk/test';
 import {bytesToHex, decodeFunctionData, hexToBytes, type Hex} from 'viem';
 
@@ -30,6 +31,8 @@ const RECEIVER = '0x1111111111111111111111111111111111111111' as Hex;
 const TX_HASH = ('0xab' + 'cd'.repeat(31)) as Hex;
 
 const NETWORK = {chainName: CHAIN_NAME, isTestnet: false, receiver: RECEIVER};
+// Largest estimate with estimate * 64 / 63 + WRITE_OVERHEAD_GAS <= MAX_WRITE_GAS.
+const MAX_FITTING_ESTIMATE = 16_268_979n;
 
 type EstimateGasInput = {msg?: {data: Uint8Array}};
 
@@ -115,11 +118,11 @@ describe('execution-chain-robot workflow', () => {
     expect(receiver).toBe(RECEIVER);
   });
 
-  test('skips and logs a payload estimated above the write quota, still executing the rest', () => {
+  test('skips and logs a payload that does not fit the write quota, still executing the rest', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     evmMock.callContract = checkUpkeepMock(true, [7, 9]);
     evmMock.estimateGas = (input: EstimateGasInput) => ({
-      gas: estimatedIds(input)[0] === 7 ? MAX_WRITE_GAS + 1n : MAX_WRITE_GAS,
+      gas: estimatedIds(input)[0] === 7 ? MAX_FITTING_ESTIMATE + 1n : MAX_FITTING_ESTIMATE,
     });
     let writes = 0;
     evmMock.writeReport = () => {
@@ -178,6 +181,20 @@ describe('execution-chain-robot workflow', () => {
     const runtime = newTestRuntime();
     expect(handle(runtime as never)).toBe('submit skipped');
     expect(runtime.getLogs().find((l) => l.includes('writeReport status='))).toBeDefined();
+  });
+
+  test('returns "submit skipped" and logs when onReport reverts inside the forwarder tx', () => {
+    const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
+    evmMock.callContract = checkUpkeepMock(true, [7]);
+    evmMock.estimateGas = () => ({gas: 100_000n});
+    evmMock.writeReport = () => ({
+      ...success(),
+      receiverContractExecutionStatus: EVM_PB.ReceiverContractExecutionStatus.REVERTED,
+    });
+
+    const runtime = newTestRuntime();
+    expect(handle(runtime as never)).toBe('submit skipped');
+    expect(runtime.getLogs().find((l) => l.includes('onReport reverted in tx'))).toBeDefined();
   });
 
   test('returns "Network not found" for an unknown chain', () => {
