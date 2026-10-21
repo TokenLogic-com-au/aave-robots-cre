@@ -19,8 +19,8 @@ contract DeployGovernanceChainRobotReceiver is Script {
     address guardian;
   }
 
-  /// @dev Max gas price set on BGD's `GasCappedGovernanceChainRobotKeeper` (0x1996…9C11).
-  uint256 internal constant MAX_GAS_PRICE = 150 gwei;
+  /// @dev The max gas price set on BGD's keeper.
+  uint256 public constant MAX_GAS_PRICE = 150 gwei;
 
   function run() external returns (address) {
     DeployConfig memory config = getDeployConfig(block.chainid);

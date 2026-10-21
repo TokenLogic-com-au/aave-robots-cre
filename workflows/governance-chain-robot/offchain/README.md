@@ -1,26 +1,20 @@
 # Governance Chain Robot — CRE workflow
 
 Off-chain CRE workflow driving
-[`GovernanceChainRobotReceiver`](../src/GovernanceChainRobotReceiver.sol). On the cron in
-`schedule` (every 30 seconds, as the `MailboxCRE` workflow runs BGD's keeper today) it
-calls the receiver's `checkUpkeep` (with empty `checkData`) and, when an action is due:
+[`GovernanceChainRobotReceiver`](../src/GovernanceChainRobotReceiver.sol). Every 30 seconds
+(`schedule`) it calls `checkUpkeep` (empty `checkData`) and, when an action is due:
 
-1. estimates `onReport(0x, performData)` on the receiver and skips the tick if it reverts
-   (every action stale) or exceeds the CRE write quota (`MAX_WRITE_GAS`, 16,777,216 gas);
-2. signs `performData` and writes it as the receiver's `onReport`, requesting the full
-   quota as the gas limit. Not the estimate: `onReport` catches reverting Governance
-   calls, so the estimate of a batch can leave one action out of gas while another
-   succeeds.
-
-The quota check lives here rather than in `shared/offchain/checkUpkeep.ts`. A full batch
-(5 actions) stays far below it: activating voting costs ~0.8M gas and executing a
-single-payload proposal ~0.8M on the fork tests.
+1. estimates `onReport(0x, performData)` and skips the tick if it reverts, or if
+   `estimate * 64 / 63 + WRITE_OVERHEAD_GAS` (250k, forwarder overhead) exceeds the CRE
+   write quota `MAX_WRITE_GAS` (16,777,216);
+2. signs `performData` and writes it with the full quota as gas limit, since `onReport`
+   catches reverting calls and a batch estimate could leave one action out of gas;
+3. logs a failure if the tx or the receiver's `onReport` reverted.
 
 ## Config
 
-`receiver` is filled in after the `GovernanceChainRobotReceiver` is deployed on Ethereum.
-With an empty `receiver` the workflow has no trigger, so it can only be simulated once it's
-set.
+`receiver` is filled in after the receiver is deployed on Ethereum. With an empty
+`receiver` the workflow has no trigger.
 
 ## Setup
 
@@ -40,9 +34,8 @@ cre workflow activate ./governance-chain-robot/offchain --env=../.env --target=g
 ```
 
 Or via the `package.json` scripts (`npm run simulate:production`,
-`npm run deploy:production:unsigned`, …). The workflow name is set in
-[`workflow.yaml`](workflow.yaml) (`governance-chain-robot-production`). Deploying again
-with the same name updates the existing workflow.
+`npm run deploy:production:unsigned`, …). The workflow name is
+`governance-chain-robot-production` ([`workflow.yaml`](workflow.yaml)).
 
 ## Testing
 

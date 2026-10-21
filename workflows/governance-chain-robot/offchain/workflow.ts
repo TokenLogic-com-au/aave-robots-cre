@@ -8,6 +8,7 @@ import {
   TxStatus,
   type Runtime,
 } from '@chainlink/cre-sdk';
+import {EVM_PB} from '@chainlink/cre-sdk/pb';
 import {encodeFunctionData, zeroAddress, type Hex} from 'viem';
 
 import {IAaveCREReceiverABI} from '../../shared/offchain/abi/IAaveCREReceiver';
@@ -21,15 +22,21 @@ type EvmClient = InstanceType<typeof cre.capabilities.EVMClient>;
 // The receiver holds the Governance immutable and scans the proposals itself.
 const EMPTY_CHECK_DATA = '0x' as Hex;
 
-// Gas quota per CRE write (`ChainWrite.EVM.TransactionGasLimit`), 16,777,216 since Chainlink
-// raised it from 10M. A report estimated above it can't go through CRE, so it is skipped.
-// The write requests the full quota rather than the estimate: `onReport` catches reverting
-// Governance calls, so the estimate of a batch can be just enough for one action to run out
-// of gas while another succeeds.
+// Gas quota per CRE write. Writes request all of it rather than the estimate: `onReport` catches
+// reverting calls, so a batch estimate can leave one action out of gas while another succeeds.
 export const MAX_WRITE_GAS = 16_777_216n;
 
-/// Estimates `onReport('0x', performData)` on the receiver. Returns the gas, or `null` (after
-/// logging) if it reverts, e.g. because every action in the report is stale.
+// Forwarder report verification and call overhead on top of the `onReport` estimate.
+export const WRITE_OVERHEAD_GAS = 250_000n;
+
+/// Whether an `onReport` estimate fits the write quota once the forwarder overhead and the
+/// 1/64 of gas withheld from its call to the receiver are added.
+export function fitsWriteQuota(estimate: bigint): boolean {
+  return (estimate * 64n) / 63n + WRITE_OVERHEAD_GAS <= MAX_WRITE_GAS;
+}
+
+/// Estimates `onReport('0x', performData)` on the receiver. Returns `null` (after logging) if it
+/// reverts.
 export function estimateOnReport(
   runtime: Runtime<Config>,
   evmClient: EvmClient,
@@ -56,8 +63,8 @@ export function estimateOnReport(
   }
 }
 
-/// Signs `performData` and writes it to the receiver with the full write quota. Returns the
-/// tx hash, or `null` if the write failed.
+/// Signs `performData` and writes it to the receiver. Returns the tx hash, or `null` (after
+/// logging) if the tx or the receiver's `onReport` failed.
 export function writeReport(
   runtime: Runtime<Config>,
   evmClient: EvmClient,
@@ -92,7 +99,12 @@ export function writeReport(
     runtime.log(`[${label}] writeReport returned SUCCESS but no txHash — skipping`);
     return null;
   }
-  return bytesToHex(result.txHash);
+  const txHash = bytesToHex(result.txHash);
+  if (result.receiverContractExecutionStatus === EVM_PB.ReceiverContractExecutionStatus.REVERTED) {
+    runtime.log(`[${label}] onReport reverted in the forwarder tx ${txHash}`);
+    return null;
+  }
+  return txHash;
 }
 
 export function runForNetwork(
@@ -106,9 +118,9 @@ export function runForNetwork(
 
   const estimate = estimateOnReport(runtime, evmClient, receiver, performData, label);
   if (estimate === null) return 'submit skipped';
-  if (estimate > MAX_WRITE_GAS) {
+  if (!fitsWriteQuota(estimate)) {
     runtime.log(
-      `[${label}] estimate ${estimate} exceeds max write gas ${MAX_WRITE_GAS} — skipping`,
+      `[${label}] estimate ${estimate} plus overhead exceeds max write gas ${MAX_WRITE_GAS} — skipping`,
     );
     return 'submit skipped';
   }
