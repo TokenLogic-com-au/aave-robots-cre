@@ -19,6 +19,8 @@ import {GovernanceV3Plasma} from 'aave-address-book/GovernanceV3Plasma.sol';
 
 import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
 
+import {GovernanceOwners} from '../../shared/scripts/GovernanceOwners.sol';
+
 import {ExecutionChainRobotReceiver} from '../src/ExecutionChainRobotReceiver.sol';
 import {IExecutionChainRobotReceiver} from '../src/IExecutionChainRobotReceiver.sol';
 import {DeployExecutionChainRobotReceiver} from '../scripts/DeployExecutionChainRobotReceiver.s.sol';
@@ -278,13 +280,14 @@ contract ExecutionChainRobotReceiverForkTest is Test {
     DeployExecutionChainRobotReceiver.DeployConfig memory config = script.getDeployConfig(
       block.chainid
     );
+    (address owner, address guardian) = GovernanceOwners.get(block.chainid);
     receiver = ExecutionChainRobotReceiver(script.run());
 
     assertEq(address(receiver.PAYLOADS_CONTROLLER()), config.payloadsController, 'controller');
     assertEq(receiver.GAS_PRICE_ORACLE(), config.gasPriceOracle, 'gas price oracle');
     assertEq(receiver.getMaxGasPrice(), config.maxGasPrice, 'max gas price');
-    assertEq(receiver.owner(), config.owner, 'owner');
-    assertEq(receiver.guardian(), config.guardian, 'guardian');
+    assertEq(receiver.owner(), owner, 'owner');
+    assertEq(receiver.guardian(), guardian, 'guardian');
 
     // Keeps the Ethereum tests independent of live gas prices; BGD's keeper reads the same feed.
     if (config.gasPriceOracle != address(0)) _mockGasPrice(config.gasPriceOracle, 1 gwei);
