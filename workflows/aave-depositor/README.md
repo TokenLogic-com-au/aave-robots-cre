@@ -11,7 +11,7 @@ workflow per chain: Ethereum, Arbitrum, Base, Optimism, Avalanche and Polygon.
 ```
 aave-depositor/
 ├── src/
-│   ├── AaveDepositorReceiver.sol         # the robot — inherits IAaveCREReceiver, permissioned onReport
+│   ├── AaveDepositorReceiver.sol         # the robot — inherits WorkflowsBase, permissioned onReport
 │   └── IAaveDepositorReceiver.sol        # robot interface + minimal Roles / Steward interfaces
 ├── tests/
 │   ├── AaveDepositorReceiver.t.sol       # unit tests (mocked Roles Modifier)
@@ -19,17 +19,17 @@ aave-depositor/
 │   └── AaveDepositorReceiverAvalanchePolygon.fork.t.sol  # fork test: AFC scopes the role, deposit + migration
 ├── scripts/
 │   ├── DeployAaveDepositorReceiver.s.sol # stand-alone forge deploy (any supported chain)
-│   └── AaveDepositorNetworks.sol         # per-chain forwarder / Roles / Steward / owner, shared with the fork test
+│   └── AaveDepositorNetworks.sol         # per-chain forwarder / Roles / Steward, shared with the fork tests
 └── offchain/                             # CRE workflow — see offchain/README.md
 ```
 
 ## On-chain behavior
 
-`AaveDepositorReceiver` implements [`IAaveCREReceiver`](../shared/src/IAaveCREReceiver.sol):
+`AaveDepositorReceiver` inherits [`WorkflowsBase`](../shared/src/WorkflowsBase.sol):
 
 - `checkUpkeep(checkData) → (needed, calls)` — read-only pre-flight. `checkData` is
   `abi.encode(bytes[] calls)`, each call being Steward calldata. Returns `(true,
-checkData)` when the robot is enabled and every call targets an allowed selector,
+checkData)` when automation is enabled and every call targets an allowed selector,
   `(false, "")` otherwise.
 - `onReport(metadata, report)` — **permissioned**: `msg.sender` must be the CRE
   forwarder, and when `expectedWorkflowId` is set the report's workflow id must match.
@@ -54,11 +54,12 @@ them; the Roles Modifier then limits what that report can do.
 ### State
 
 - `expectedWorkflowId` — zero accepts any workflow; set via `setExpectedWorkflowId`, owner only.
-- `_disabled` — excludes the robot from automation. `checkUpkeep` and `onReport` both stand
-  down while set. Toggled via `setDisabled(disabled)`, owner or guardian.
+- The global automation switch from `WorkflowsBase`: `disableAutomation()` (owner or
+  guardian) makes `checkUpkeep` report no upkeep and `onReport` revert,
+  `enableAutomation()` (owner) resumes.
 
-The contract never holds tokens (the Steward moves them Collector → pool), so unlike
-`FeeSharesMinter` it does not include `Rescuable`.
+The contract never holds tokens (the Steward moves them Collector → pool); the owner can
+still rescue anything sent to it by mistake through the base's `Rescuable`.
 
 ## Prerequisites on each chain
 
@@ -105,9 +106,9 @@ make test-offchain-aave-depositor                                               
 
 ## Deploying
 
-One receiver per network. The script takes forwarder, Roles Modifier, Steward, owner
-(level-1 governance executor) and guardian (governance guardian) from
-`AaveDepositorNetworks` for the chain it runs on:
+One receiver per network. The script takes forwarder, Roles Modifier and Steward from
+`AaveDepositorNetworks`, and owner (level-1 governance executor) and guardian (governance
+guardian) from the shared `GovernanceOwners`, for the chain it runs on:
 
 ```bash
 make deploy-aave-depositor env=Mainnet dry=1   # simulate

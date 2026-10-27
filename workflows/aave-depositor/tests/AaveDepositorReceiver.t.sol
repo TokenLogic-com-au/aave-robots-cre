@@ -3,12 +3,9 @@ pragma solidity ^0.8.0;
 
 import {Test} from 'forge-std/Test.sol';
 
-import {IWithGuardian} from 'solidity-utils/contracts/access-control/interfaces/IWithGuardian.sol';
-import {IERC165} from 'openzeppelin-contracts/contracts/utils/introspection/IERC165.sol';
 import {Ownable} from 'openzeppelin-contracts/contracts/access/Ownable.sol';
 
-import {IReceiver} from 'aave-cre/IReceiver.sol';
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
+import {IWorkflowsBase} from 'aave-cre/IWorkflowsBase.sol';
 
 import {AaveDepositorReceiver} from '../src/AaveDepositorReceiver.sol';
 import {IAaveDepositorReceiver, IRolesModifier, IPoolExposureSteward} from '../src/IAaveDepositorReceiver.sol';
@@ -71,16 +68,6 @@ contract AaveDepositorReceiverTest is Test {
     new AaveDepositorReceiver(forwarder, roles, address(0), ROLE_KEY, owner, guardian);
   }
 
-  function test_supportsInterface() public view {
-    assertTrue(robot.supportsInterface(type(IReceiver).interfaceId), 'IReceiver unsupported');
-    assertTrue(
-      robot.supportsInterface(type(IAaveCREReceiver).interfaceId),
-      'IAaveCREReceiver unsupported'
-    );
-    assertTrue(robot.supportsInterface(type(IERC165).interfaceId), 'IERC165 unsupported');
-    assertFalse(robot.supportsInterface(0xffffffff), 'invalid interface reported supported');
-  }
-
   function test_checkUpkeep_returnsFalse_whenCheckDataEmpty() public view {
     (bool needed, ) = robot.checkUpkeep('');
     assertFalse(needed, 'upkeep needed with empty checkData');
@@ -112,8 +99,8 @@ contract AaveDepositorReceiverTest is Test {
   }
 
   function test_checkUpkeep_returnsFalse_whenDisabled() public {
-    vm.prank(owner);
-    robot.setDisabled(true);
+    vm.prank(guardian);
+    robot.disableAutomation();
     (bool needed, ) = robot.checkUpkeep(_report(_deposit(1e6), _migration(2e6)));
     assertFalse(needed, 'upkeep needed while disabled');
   }
@@ -174,11 +161,11 @@ contract AaveDepositorReceiverTest is Test {
     robot.onReport('', abi.encode(new bytes[](0)));
   }
 
-  function test_onReport_revertsWith_NothingToExecute_whenDisabled() public {
+  function test_onReport_revertsWith_AutomationIsDisabled_whenDisabled() public {
     vm.prank(guardian);
-    robot.setDisabled(true);
+    robot.disableAutomation();
     vm.prank(forwarder);
-    vm.expectRevert(IAaveDepositorReceiver.NothingToExecute.selector);
+    vm.expectRevert(IWorkflowsBase.AutomationIsDisabled.selector);
     robot.onReport('', _report(_deposit(1e6), _migration(2e6)));
   }
 
@@ -256,25 +243,11 @@ contract AaveDepositorReceiverTest is Test {
     robot.setExpectedWorkflowId(WORKFLOW_ID);
   }
 
-  function test_setDisabled_byOwner() public {
-    vm.expectEmit(address(robot));
-    emit IAaveDepositorReceiver.AutomationDisabled(true);
-    vm.prank(owner);
-    robot.setDisabled(true);
-    assertTrue(robot.isDisabled(), 'not disabled by owner');
-  }
-
-  function test_setDisabled_byGuardian() public {
+  function test_enableAutomation_resumesUpkeepAndReports() public {
     vm.prank(guardian);
-    robot.setDisabled(true);
-    assertTrue(robot.isDisabled(), 'not disabled by guardian');
-  }
-
-  function test_setDisabled_false_resumesAutomation() public {
-    vm.startPrank(owner);
-    robot.setDisabled(true);
-    robot.setDisabled(false);
-    vm.stopPrank();
+    robot.disableAutomation();
+    vm.prank(owner);
+    robot.enableAutomation();
     assertFalse(robot.isDisabled(), 'still disabled');
 
     bytes memory report = _report(_deposit(1e6), _migration(2e6));
@@ -282,20 +255,6 @@ contract AaveDepositorReceiverTest is Test {
     assertTrue(needed, 'upkeep not resumed');
     vm.prank(forwarder);
     robot.onReport('', report);
-  }
-
-  function test_setDisabled_revertsWith_NotOwnerOrGuardian() public {
-    vm.prank(bob);
-    vm.expectRevert(
-      abi.encodeWithSelector(IWithGuardian.OnlyGuardianOrOwnerInvalidCaller.selector, bob)
-    );
-    robot.setDisabled(true);
-  }
-
-  function test_setDisabled_revertsWith_StateUnchanged_whenSameValue() public {
-    vm.prank(owner);
-    vm.expectRevert(IAaveDepositorReceiver.StateUnchanged.selector);
-    robot.setDisabled(false);
   }
 
   function _deposit(uint256 amount) internal view returns (bytes memory) {

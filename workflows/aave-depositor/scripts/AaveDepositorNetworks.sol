@@ -1,21 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {ChainIds} from 'solidity-utils/contracts/utils/ChainHelpers.sol';
 import {AaveV3Ethereum} from 'aave-address-book/AaveV3Ethereum.sol';
 import {AaveV3Arbitrum} from 'aave-address-book/AaveV3Arbitrum.sol';
 import {AaveV3Base} from 'aave-address-book/AaveV3Base.sol';
 import {AaveV3Optimism} from 'aave-address-book/AaveV3Optimism.sol';
 import {AaveV3Avalanche} from 'aave-address-book/AaveV3Avalanche.sol';
 import {AaveV3Polygon} from 'aave-address-book/AaveV3Polygon.sol';
-import {GovernanceV3Ethereum} from 'aave-address-book/GovernanceV3Ethereum.sol';
-import {GovernanceV3Arbitrum} from 'aave-address-book/GovernanceV3Arbitrum.sol';
-import {GovernanceV3Base} from 'aave-address-book/GovernanceV3Base.sol';
-import {GovernanceV3Optimism} from 'aave-address-book/GovernanceV3Optimism.sol';
-import {GovernanceV3Avalanche} from 'aave-address-book/GovernanceV3Avalanche.sol';
-import {GovernanceV3Polygon} from 'aave-address-book/GovernanceV3Polygon.sol';
 
 /// @notice Per-network constructor arguments for `AaveDepositorReceiver`, shared by the
-/// deploy script and the fork test.
+/// deploy script and the fork tests. Owner and guardian come from `GovernanceOwners`.
 /// @dev Forwarders come from `cre workflow supported-chains`; the Roles Modifiers are the
 /// Aave Finance Committee's (owner and avatar `AFC_SAFE` on every chain), with the
 /// `aave_depositor` role scoped to the chain's PoolExposureSteward.
@@ -24,9 +19,6 @@ library AaveDepositorNetworks {
     address forwarder;
     address roles;
     address steward;
-    bytes32 roleKey;
-    address owner;
-    address guardian;
   }
 
   bytes32 internal constant ROLE_KEY = 'aave_depositor';
@@ -47,71 +39,29 @@ library AaveDepositorNetworks {
   address internal constant POLYGON_ROLES = 0x395721158D0D0E8492B35d172cFb0A8a759173bd;
 
   function get(uint256 chainId) internal pure returns (Network memory) {
-    if (chainId == 1) {
-      return
-        Network(
-          ETHEREUM_FORWARDER,
-          ETHEREUM_ROLES,
-          AaveV3Ethereum.POOL_EXPOSURE_STEWARD,
-          ROLE_KEY,
-          GovernanceV3Ethereum.EXECUTOR_LVL_1,
-          GovernanceV3Ethereum.GOVERNANCE_GUARDIAN
-        );
+    if (chainId == ChainIds.MAINNET) {
+      return Network(ETHEREUM_FORWARDER, ETHEREUM_ROLES, AaveV3Ethereum.POOL_EXPOSURE_STEWARD);
     }
-    if (chainId == 42161) {
-      return
-        Network(
-          L2_FORWARDER,
-          ARBITRUM_ROLES,
-          AaveV3Arbitrum.POOL_EXPOSURE_STEWARD,
-          ROLE_KEY,
-          GovernanceV3Arbitrum.EXECUTOR_LVL_1,
-          GovernanceV3Arbitrum.GOVERNANCE_GUARDIAN
-        );
+    if (chainId == ChainIds.ARBITRUM) {
+      return Network(L2_FORWARDER, ARBITRUM_ROLES, AaveV3Arbitrum.POOL_EXPOSURE_STEWARD);
     }
-    if (chainId == 8453) {
-      return
-        Network(
-          L2_FORWARDER,
-          BASE_ROLES,
-          AaveV3Base.POOL_EXPOSURE_STEWARD,
-          ROLE_KEY,
-          GovernanceV3Base.EXECUTOR_LVL_1,
-          GovernanceV3Base.GOVERNANCE_GUARDIAN
-        );
+    if (chainId == ChainIds.BASE) {
+      return Network(L2_FORWARDER, BASE_ROLES, AaveV3Base.POOL_EXPOSURE_STEWARD);
     }
-    if (chainId == 10) {
-      return
-        Network(
-          L2_FORWARDER,
-          OPTIMISM_ROLES,
-          AaveV3Optimism.POOL_EXPOSURE_STEWARD,
-          ROLE_KEY,
-          GovernanceV3Optimism.EXECUTOR_LVL_1,
-          GovernanceV3Optimism.GOVERNANCE_GUARDIAN
-        );
+    if (chainId == ChainIds.OPTIMISM) {
+      return Network(L2_FORWARDER, OPTIMISM_ROLES, AaveV3Optimism.POOL_EXPOSURE_STEWARD);
     }
-    if (chainId == 43114) {
+    if (chainId == ChainIds.AVALANCHE) {
       return
         Network(
           AVALANCHE_POLYGON_FORWARDER,
           AVALANCHE_ROLES,
-          AaveV3Avalanche.POOL_EXPOSURE_STEWARD,
-          ROLE_KEY,
-          GovernanceV3Avalanche.EXECUTOR_LVL_1,
-          GovernanceV3Avalanche.GOVERNANCE_GUARDIAN
+          AaveV3Avalanche.POOL_EXPOSURE_STEWARD
         );
     }
-    if (chainId == 137) {
+    if (chainId == ChainIds.POLYGON) {
       return
-        Network(
-          AVALANCHE_POLYGON_FORWARDER,
-          POLYGON_ROLES,
-          AaveV3Polygon.POOL_EXPOSURE_STEWARD,
-          ROLE_KEY,
-          GovernanceV3Polygon.EXECUTOR_LVL_1,
-          GovernanceV3Polygon.GOVERNANCE_GUARDIAN
-        );
+        Network(AVALANCHE_POLYGON_FORWARDER, POLYGON_ROLES, AaveV3Polygon.POOL_EXPOSURE_STEWARD);
     }
     revert('unsupported chain');
   }

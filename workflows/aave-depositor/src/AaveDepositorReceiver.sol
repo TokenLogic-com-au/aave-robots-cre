@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {OwnableWithGuardian} from 'solidity-utils/contracts/access-control/OwnableWithGuardian.sol';
-import {IERC165} from 'openzeppelin-contracts/contracts/utils/introspection/IERC165.sol';
-
-import {IReceiver} from 'aave-cre/IReceiver.sol';
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
+import {WorkflowsBase} from 'aave-cre/WorkflowsBase.sol';
 import {IAaveDepositorReceiver, IRolesModifier, IPoolExposureSteward} from './IAaveDepositorReceiver.sol';
 
 /// @title AaveDepositorReceiver
@@ -15,7 +11,15 @@ import {IAaveDepositorReceiver, IRolesModifier, IPoolExposureSteward} from './IA
 /// @dev The Roles Modifier only allows `depositV3` and `migrateV2toV3` on the Steward,
 /// so calls are executed individually instead of through `multicall`. `onReport` is
 /// permissioned because these calls move Collector funds.
-contract AaveDepositorReceiver is IAaveDepositorReceiver, OwnableWithGuardian {
+contract AaveDepositorReceiver is IAaveDepositorReceiver, WorkflowsBase {
+  /// @dev Zodiac `Enum.Operation.Call`.
+  uint8 internal constant OPERATION_CALL = 0;
+
+  /// @dev CRE report metadata starts with the bytes32 workflow id.
+  uint256 internal constant WORKFLOW_ID_LENGTH = 32;
+
+  uint256 internal constant SELECTOR_LENGTH = 4;
+
   /// @inheritdoc IAaveDepositorReceiver
   address public immutable override FORWARDER;
 
@@ -29,7 +33,6 @@ contract AaveDepositorReceiver is IAaveDepositorReceiver, OwnableWithGuardian {
   bytes32 public immutable override ROLE_KEY;
 
   bytes32 internal _expectedWorkflowId;
-  bool internal _disabled;
 
   /// @param forwarder_ The CRE forwarder allowed to call `onReport`.
   /// @param roles_ The Zodiac Roles Modifier.
@@ -44,7 +47,7 @@ contract AaveDepositorReceiver is IAaveDepositorReceiver, OwnableWithGuardian {
     bytes32 roleKey_,
     address initialOwner_,
     address initialGuardian_
-  ) OwnableWithGuardian(initialOwner_, initialGuardian_) {
+  ) WorkflowsBase(initialOwner_, initialGuardian_) {
     require(
       forwarder_ != address(0) && roles_ != address(0) && steward_ != address(0),
       ZeroAddress()
@@ -56,11 +59,52 @@ contract AaveDepositorReceiver is IAaveDepositorReceiver, OwnableWithGuardian {
     ROLE_KEY = roleKey_;
   }
 
-  /// @inheritdoc IAaveCREReceiver
-  function checkUpkeep(
+  /// @inheritdoc IAaveDepositorReceiver
+  function setExpectedWorkflowId(bytes32 workflowId) external onlyOwner {
+    _expectedWorkflowId = workflowId;
+    emit ExpectedWorkflowIdSet(workflowId);
+  }
+
+  /// @inheritdoc IAaveDepositorReceiver
+  function expectedWorkflowId() external view returns (bytes32) {
+    return _expectedWorkflowId;
+  }
+
+  /// @dev All-or-nothing: a call the Roles Modifier rejects reverts the whole report.
+  function _onReport(bytes calldata metadata, bytes calldata report) internal override {
+    require(msg.sender == FORWARDER, InvalidSender(msg.sender));
+
+    bytes32 expected = _expectedWorkflowId;
+    if (expected != bytes32(0)) {
+      bytes32 received = metadata.length >= WORKFLOW_ID_LENGTH
+        ? bytes32(metadata[:WORKFLOW_ID_LENGTH])
+        : bytes32(0);
+      require(received == expected, InvalidWorkflowId(received, expected));
+    }
+
+    bytes[] memory calls = abi.decode(report, (bytes[]));
+    require(calls.length > 0, NothingToExecute());
+
+    for (uint256 i = 0; i < calls.length; i++) {
+      bytes4 selector = _selector(calls[i]);
+      require(_isAllowed(selector), SelectorNotAllowed(selector));
+
+      ROLES.execTransactionWithRole({
+        to: STEWARD,
+        value: 0,
+        data: calls[i],
+        operation: OPERATION_CALL,
+        roleKey: ROLE_KEY,
+        shouldRevert: true
+      });
+      emit StewardCallExecuted(i, selector);
+    }
+  }
+
+  function _checkUpkeep(
     bytes calldata checkData
-  ) external view returns (bool upkeepNeeded, bytes memory performData) {
-    if (_disabled || checkData.length == 0) return (false, '');
+  ) internal pure override returns (bool upkeepNeeded, bytes memory performData) {
+    if (checkData.length == 0) return (false, '');
 
     bytes[] memory calls = abi.decode(checkData, (bytes[]));
     if (calls.length == 0) return (false, '');
@@ -72,62 +116,6 @@ contract AaveDepositorReceiver is IAaveDepositorReceiver, OwnableWithGuardian {
     return (true, checkData);
   }
 
-  /// @inheritdoc IReceiver
-  /// @dev All-or-nothing: a call the Roles Modifier rejects reverts the whole report.
-  function onReport(bytes calldata metadata, bytes calldata report) external override {
-    require(msg.sender == FORWARDER, InvalidSender(msg.sender));
-
-    bytes32 expected = _expectedWorkflowId;
-    if (expected != bytes32(0)) {
-      bytes32 received = metadata.length >= 32 ? bytes32(metadata[:32]) : bytes32(0);
-      require(received == expected, InvalidWorkflowId(received, expected));
-    }
-
-    if (_disabled) revert NothingToExecute();
-
-    bytes[] memory calls = abi.decode(report, (bytes[]));
-    if (calls.length == 0) revert NothingToExecute();
-
-    for (uint256 i = 0; i < calls.length; i++) {
-      bytes4 selector = _selector(calls[i]);
-      require(_isAllowed(selector), SelectorNotAllowed(selector));
-
-      ROLES.execTransactionWithRole(STEWARD, 0, calls[i], 0, ROLE_KEY, true);
-      emit StewardCallExecuted(i, selector);
-    }
-  }
-
-  /// @inheritdoc IAaveDepositorReceiver
-  function expectedWorkflowId() external view returns (bytes32) {
-    return _expectedWorkflowId;
-  }
-
-  /// @inheritdoc IAaveDepositorReceiver
-  function setExpectedWorkflowId(bytes32 workflowId) external onlyOwner {
-    _expectedWorkflowId = workflowId;
-    emit ExpectedWorkflowIdSet(workflowId);
-  }
-
-  /// @inheritdoc IAaveDepositorReceiver
-  function isDisabled() public view returns (bool) {
-    return _disabled;
-  }
-
-  /// @inheritdoc IAaveDepositorReceiver
-  function setDisabled(bool disabled) external onlyOwnerOrGuardian {
-    require(_disabled != disabled, StateUnchanged());
-    _disabled = disabled;
-    emit AutomationDisabled(disabled);
-  }
-
-  /// @inheritdoc IERC165
-  function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
-    return
-      interfaceId == type(IReceiver).interfaceId ||
-      interfaceId == type(IAaveCREReceiver).interfaceId ||
-      interfaceId == type(IERC165).interfaceId;
-  }
-
   function _isAllowed(bytes4 selector) internal pure returns (bool) {
     return
       selector == IPoolExposureSteward.depositV3.selector ||
@@ -135,6 +123,6 @@ contract AaveDepositorReceiver is IAaveDepositorReceiver, OwnableWithGuardian {
   }
 
   function _selector(bytes memory data) internal pure returns (bytes4) {
-    return data.length < 4 ? bytes4(0) : bytes4(data);
+    return data.length < SELECTOR_LENGTH ? bytes4(0) : bytes4(data);
   }
 }
