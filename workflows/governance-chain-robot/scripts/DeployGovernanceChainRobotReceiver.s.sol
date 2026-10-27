@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {Script, console} from 'forge-std/Script.sol';
+import {Script} from 'forge-std/Script.sol';
 
 import {ChainIds} from 'solidity-utils/contracts/utils/ChainHelpers.sol';
 import {GovernanceV3Ethereum} from 'aave-address-book/GovernanceV3Ethereum.sol';
 import {ChainlinkEthereum} from 'aave-address-book/ChainlinkEthereum.sol';
 
+import {GovernanceOwners} from '../../shared/scripts/GovernanceOwners.sol';
 import {GovernanceChainRobotReceiver} from '../src/GovernanceChainRobotReceiver.sol';
 
 // make deploy-governance-chain-robot env=Mainnet [dry=1]
@@ -37,25 +38,16 @@ contract DeployGovernanceChainRobotReceiver is Script {
     );
     vm.stopBroadcast();
 
-    console.log('GovernanceChainRobotReceiver deployed at:', address(receiver));
-    console.log('Governance:', config.governance);
-    console.log('Gas price oracle:', config.gasPriceOracle);
-    console.log('Max gas price:', config.maxGasPrice);
-    console.log('Owner:', config.owner);
-    console.log('Guardian:', config.guardian);
     return address(receiver);
   }
 
   /// @dev Governance V3 only lives on Ethereum.
-  function getDeployConfig(uint256 chainId) public pure returns (DeployConfig memory) {
+  function getDeployConfig(uint256 chainId) public pure returns (DeployConfig memory config) {
     require(chainId == ChainIds.MAINNET, 'unsupported chain');
-    return
-      DeployConfig({
-        governance: address(GovernanceV3Ethereum.GOVERNANCE),
-        gasPriceOracle: ChainlinkEthereum.Fast_Gas__Gwei,
-        maxGasPrice: MAX_GAS_PRICE,
-        owner: GovernanceV3Ethereum.EXECUTOR_LVL_1,
-        guardian: GovernanceV3Ethereum.GOVERNANCE_GUARDIAN
-      });
+
+    config.governance = address(GovernanceV3Ethereum.GOVERNANCE);
+    config.gasPriceOracle = ChainlinkEthereum.Fast_Gas__Gwei;
+    config.maxGasPrice = MAX_GAS_PRICE;
+    (config.owner, config.guardian) = GovernanceOwners.get(chainId);
   }
 }
