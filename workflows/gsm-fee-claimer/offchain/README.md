@@ -8,13 +8,13 @@ which sends those fees to the GHO treasury. One trigger per network.
 
 ## Files
 
-| File                     | Purpose                                                               |
-| ------------------------ | --------------------------------------------------------------------- |
-| `main.ts`                | Entry point — builds the runner from the config in `workflow.yaml`.   |
-| `workflow.ts`            | `initWorkflow` (one handler per network) + `createReceiverHandler`.   |
-| `types.ts`               | Zod config schema (`schedule`, `evms[].receiver`, `gsms`, `minFees`). |
-| `config.production.json` | Receiver + GSM list per network (Ethereum USDC + USDT, Plasma).       |
-| `workflow.test.ts`       | `bun test` unit suite (mocked cre-sdk EVM client).                    |
+| File                     | Purpose                                                              |
+| ------------------------ | -------------------------------------------------------------------- |
+| `main.ts`                | Entry point — builds the runner from the config in `workflow.yaml`.  |
+| `workflow.ts`            | `initWorkflow` (one handler per network) + `createReceiverHandler`.  |
+| `types.ts`               | Shared config schema with per-network `gsms` and `minFees`.          |
+| `config.production.json` | Receiver + GSM list per network (Ethereum, Arbitrum, Plasma, Monad). |
+| `workflow.test.ts`       | `bun test` unit suite (mocked cre-sdk EVM client).                   |
 
 Each `receiver` is filled in after the corresponding `GsmFeeClaimerReceiver` is
 deployed on that network. Addresses are normalized on parse, so casing in the JSON
@@ -25,9 +25,10 @@ accrue until the next run.
 
 ## Gas
 
-The workflow uses `eth_estimateGas` only to skip a write that would revert or exceed
-the CRE quota, and requests the full quota (`MAX_WRITE_GAS`, 10M) for the write itself
-so the simulator and production behave the same. Gas is only paid for what the
+The workflow writes through the shared `submitReport`, which uses `eth_estimateGas` only
+to skip a write that would revert or not fit the CRE quota with the forwarder overhead,
+and requests the full quota (`MAX_WRITE_GAS`) for the write itself so the simulator and
+production behave the same. Gas is only paid for what the
 transaction uses.
 
 ## Setup
