@@ -12,7 +12,7 @@ This robot calls it as soon as the reward shows up.
 ```
 refresh-rewards/
 ├── src/
-│   ├── RefreshRewardsReceiver.sol        # the robot — inherits IAaveCREReceiver, permissionless onReport
+│   ├── RefreshRewardsReceiver.sol        # the robot — inherits WorkflowsBase, permissionless onReport
 │   └── IRefreshRewardsReceiver.sol       # robot interface
 ├── tests/
 │   ├── RefreshRewardsReceiver.t.sol      # unit tests (vm.mockCall against factory/controller/stata)
@@ -27,7 +27,7 @@ refresh-rewards/
 
 ## On-chain behavior
 
-`RefreshRewardsReceiver` implements [`IAaveCREReceiver`](../shared/src/IAaveCREReceiver.sol):
+`RefreshRewardsReceiver` inherits [`WorkflowsBase`](../shared/src/WorkflowsBase.sol) and implements its `_checkUpkeep` / `_onReport`:
 
 - `checkUpkeep(factory) → (needed, (factory, stataTokens[]))` — read-only probe.
   Enumerates `factory.getStataTokens()` and flags each stataToken whose
@@ -56,7 +56,9 @@ No on-chain role is required.
 - `disableFactory(factory)` — owner or guardian (emergency off-switch). Reverts
   `FactoryStatusUnchanged` if not enabled.
 - Both emit `FactoryStatusUpdated(factory, enabled)`.
-- The contract is `Rescuable`; the owner is the rescue guardian.
+- From `WorkflowsBase`: the global switch (`disableAutomation()` by the owner or
+  guardian, `enableAutomation()` by the owner) turning `checkUpkeep` off and making
+  `onReport` revert, and `Rescuable` with the owner as rescue guardian.
 
 ## Configuration
 
@@ -66,7 +68,7 @@ Factory addresses come from `aave-address-book` (`STATA_FACTORY`).
 
 Covered chains are the ones whose stataTokens have had rewards configured in the
 `RewardsController`: Ethereum (Core and Lido), Avalanche, Optimism, Arbitrum and
-Base. Adding one is a `getDeployConfig` entry, a config entry and a deploy.
+Base. Adding one is a `getFactories` entry, a config entry and a deploy.
 
 ## Testing
 
@@ -86,10 +88,10 @@ runs a real refresh on Ethereum by appending a new reward to one aToken's list.
 ## Deployment
 
 `RefreshRewardsReceiver` deploys stand-alone, one per chain.
-`DeployRefreshRewardsReceiver` picks the config from `block.chainid`: the chain's
-`GovernanceV3<Chain>.EXECUTOR_LVL_1` / `GOVERNANCE_GUARDIAN` as owner / guardian,
-and its `STATA_FACTORY` (plus `AaveV3EthereumLido.STATA_FACTORY` on Ethereum)
-enabled in the constructor. `DeployRefreshRewardsReceiver.t.sol` checks these
+`DeployRefreshRewardsReceiver` picks the config from `block.chainid`: owner / guardian
+from [`GovernanceOwners`](../shared/scripts/GovernanceOwners.sol) (the chain's
+Governance V3 executor and guardian), and its `STATA_FACTORY` (plus
+`AaveV3EthereumLido.STATA_FACTORY` on Ethereum) enabled in the constructor. `DeployRefreshRewardsReceiver.t.sol` checks these
 factories match `offchain/config.production.json`.
 
 ```bash
