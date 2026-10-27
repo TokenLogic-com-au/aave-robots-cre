@@ -75,22 +75,20 @@ contract RefreshRewardsReceiverForkTest is Test {
 
     for (uint256 c = 0; c < chains.length; c++) {
       vm.createSelectFork(chains[c]);
-      DeployRefreshRewardsReceiver.DeployConfig memory config = script.getDeployConfig(
-        block.chainid
-      );
+      address[] memory factories = script.getFactories(block.chainid);
       RefreshRewardsReceiverHarness harness = new RefreshRewardsReceiverHarness(
         owner,
         guardian,
-        config.factories
+        factories
       );
 
-      for (uint256 f = 0; f < config.factories.length; f++) {
-        address[] memory stataTokens = IStataTokenFactory(config.factories[f]).getStataTokens();
+      for (uint256 f = 0; f < factories.length; f++) {
+        address[] memory stataTokens = IStataTokenFactory(factories[f]).getStataTokens();
         assertGt(stataTokens.length, 0, string.concat(chains[c], ': factory has no stataTokens'));
         address[2] memory sample = [stataTokens[0], stataTokens[stataTokens.length - 1]];
         for (uint256 i = 0; i < sample.length; i++) {
           assertTrue(
-            harness.isFactoryStataToken(config.factories[f], sample[i]),
+            harness.isFactoryStataToken(factories[f], sample[i]),
             string.concat(chains[c], ': stataToken not recognized as factory stataToken')
           );
           harness.needsRefresh(sample[i]);
