@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import {IPoolAddressesProvider} from 'aave-v3-origin/contracts/interfaces/IPoolAddressesProvider.sol';
 
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
+import {IWorkflowsBase} from 'aave-cre/IWorkflowsBase.sol';
 
 /// @notice GHO `Gsm` functions used by the robot.
 interface IGsm {
@@ -23,7 +23,7 @@ interface IGsm {
 /// asset's oracle price leaves a configured band.
 /// @dev `checkData` and the `report` are unused: the GSM and bounds are immutables, and
 /// `onReport` derives the action from live state.
-interface IGsmFreezerReceiver is IAaveCREReceiver {
+interface IGsmFreezerReceiver is IWorkflowsBase {
   /// @notice The action `checkUpkeep` selects and `onReport` executes.
   enum Action {
     NONE,
@@ -45,10 +45,6 @@ interface IGsmFreezerReceiver is IAaveCREReceiver {
   /// @param frozen The new swap-freeze state.
   event SwapFreezeSet(bool frozen);
 
-  /// @notice Emitted when the robot is excluded from or included back into automation.
-  /// @param disabled Whether the robot is now excluded from automation.
-  event AutomationDisabled(bool disabled);
-
   /// @notice Thrown when a constructor address is zero.
   error InvalidAddress();
 
@@ -57,10 +53,6 @@ interface IGsmFreezerReceiver is IAaveCREReceiver {
 
   /// @notice Thrown when `onReport` runs but no freeze/unfreeze action currently applies.
   error NoActionPossible();
-
-  /// @notice Thrown when disabling / enabling automation that already has that status.
-  /// @param disabled The status that was requested.
-  error AutomationStatusUnchanged(bool disabled);
 
   /// @notice The GSM this robot freezes.
   function GSM() external view returns (IGsm);
@@ -85,13 +77,4 @@ interface IGsmFreezerReceiver is IAaveCREReceiver {
 
   /// @notice Whether this robot may unfreeze as well as freeze.
   function ALLOW_UNFREEZE() external view returns (bool);
-
-  /// @notice Exclude the robot from automation. Owner or guardian.
-  function disableAutomation() external;
-
-  /// @notice Include the robot back into automation. Owner-only.
-  function enableAutomation() external;
-
-  /// @notice Whether the robot is excluded from automation.
-  function isDisabled() external view returns (bool);
 }

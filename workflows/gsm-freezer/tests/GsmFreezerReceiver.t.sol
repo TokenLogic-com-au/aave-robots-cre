@@ -3,15 +3,10 @@ pragma solidity ^0.8.0;
 
 import {Test} from 'forge-std/Test.sol';
 
-import {Ownable} from 'openzeppelin-contracts/contracts/access/Ownable.sol';
-import {IWithGuardian} from 'solidity-utils/contracts/access-control/interfaces/IWithGuardian.sol';
-import {IERC165} from 'openzeppelin-contracts/contracts/utils/introspection/IERC165.sol';
-import {IRescuable} from 'aave-v4/interfaces/IRescuable.sol';
 import {IPoolAddressesProvider} from 'aave-v3-origin/contracts/interfaces/IPoolAddressesProvider.sol';
 import {IPriceOracleGetter} from 'aave-v3-origin/contracts/interfaces/IPriceOracleGetter.sol';
 
-import {IReceiver} from 'aave-cre/IReceiver.sol';
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
+import {IWorkflowsBase} from 'aave-cre/IWorkflowsBase.sol';
 
 import {GsmFreezerReceiver} from '../src/GsmFreezerReceiver.sol';
 import {IGsmFreezerReceiver, IGsm} from '../src/IGsmFreezerReceiver.sol';
@@ -21,6 +16,9 @@ contract GsmFreezerReceiverTest is Test {
   uint256 internal constant FREEZE_UPPER = 1.01e8;
   uint256 internal constant UNFREEZE_LOWER = 0.995e8;
   uint256 internal constant UNFREEZE_UPPER = 1.005e8;
+  uint256 internal constant PEG_PRICE = 1e8;
+  uint256 internal constant DEPEGGED_PRICE = 0.90e8;
+  uint256 internal constant MAX_FUZZ_PRICE = 2e8;
   bytes32 internal constant ROLE = keccak256('SWAP_FREEZER_ROLE');
 
   GsmFreezerReceiver internal robot;
@@ -87,7 +85,7 @@ contract GsmFreezerReceiverTest is Test {
       [uint256(0.98e8), UNFREEZE_UPPER], // below the freeze band
       [FREEZE_LOWER, UNFREEZE_UPPER], // touches freezeLowerBound
       [UNFREEZE_LOWER, FREEZE_UPPER], // touches freezeUpperBound
-      [uint256(1e8), uint256(1e8)] // empty unfreeze band
+      [PEG_PRICE, PEG_PRICE] // empty unfreeze band
     ];
     for (uint256 i = 0; i < unfreezeBands.length; i++) {
       vm.expectRevert(IGsmFreezerReceiver.InvalidBounds.selector);
@@ -112,8 +110,8 @@ contract GsmFreezerReceiverTest is Test {
 
   function test_constructor_freezeOnly_revertsWith_InvalidBounds_whenFreezeBoundsEqual() public {
     IGsmFreezerReceiver.Bounds memory bounds = IGsmFreezerReceiver.Bounds({
-      freezeLowerBound: 1e8,
-      freezeUpperBound: 1e8,
+      freezeLowerBound: PEG_PRICE,
+      freezeUpperBound: PEG_PRICE,
       unfreezeLowerBound: 0,
       unfreezeUpperBound: 0
     });
@@ -121,18 +119,8 @@ contract GsmFreezerReceiverTest is Test {
     _deploy(bounds, false);
   }
 
-  function test_supportsInterface() public view {
-    assertTrue(robot.supportsInterface(type(IReceiver).interfaceId), 'IReceiver not supported');
-    assertTrue(
-      robot.supportsInterface(type(IAaveCREReceiver).interfaceId),
-      'IAaveCREReceiver not supported'
-    );
-    assertTrue(robot.supportsInterface(type(IERC165).interfaceId), 'IERC165 not supported');
-    assertFalse(robot.supportsInterface(0xffffffff), 'invalid interface id supported');
-  }
-
   function test_fuzz_checkUpkeep_followsPriceBands(uint256 price, bool frozen) public {
-    price = bound(price, 1, 2e8);
+    price = bound(price, 1, MAX_FUZZ_PRICE);
     _mockState(price, frozen, false, true);
 
     IGsmFreezerReceiver.Action expected = IGsmFreezerReceiver.Action.NONE;
@@ -159,12 +147,12 @@ contract GsmFreezerReceiverTest is Test {
   }
 
   function test_checkUpkeep_returnsFalse_whenRoleMissing() public {
-    _mockState(0.90e8, false, false, false);
+    _mockState(DEPEGGED_PRICE, false, false, false);
     _assertAction(robot, IGsmFreezerReceiver.Action.NONE);
   }
 
   function test_checkUpkeep_returnsFalse_whenSeized() public {
-    _mockState(0.90e8, false, true, true);
+    _mockState(DEPEGGED_PRICE, false, true, true);
     _assertAction(robot, IGsmFreezerReceiver.Action.NONE);
   }
 
@@ -174,9 +162,10 @@ contract GsmFreezerReceiverTest is Test {
   }
 
   function test_checkUpkeep_returnsFalse_whenDisabled() public {
-    _mockState(0.90e8, false, false, true);
+    _mockState(DEPEGGED_PRICE, false, false, true);
     vm.prank(guardian);
     robot.disableAutomation();
+
     _assertAction(robot, IGsmFreezerReceiver.Action.NONE);
   }
 
@@ -184,7 +173,7 @@ contract GsmFreezerReceiverTest is Test {
   /// read the oracle, so a reverting oracle can't make `checkUpkeep` revert.
   function test_checkUpkeep_freezeOnly_skipsOracle_whenFrozen() public {
     GsmFreezerReceiver freezeOnly = _deploy(_bounds(0, 0), false);
-    _mockStateFor(address(freezeOnly), 1e8, true, false, true);
+    _mockStateFor(address(freezeOnly), PEG_PRICE, true, false, true);
     vm.mockCallRevert(
       oracle,
       abi.encodeCall(IPriceOracleGetter.getAssetPrice, (underlying)),
@@ -194,7 +183,7 @@ contract GsmFreezerReceiverTest is Test {
   }
 
   function test_onReport_freezes_whenAnyoneCalls() public {
-    _mockState(0.90e8, false, false, true);
+    _mockState(DEPEGGED_PRICE, false, false, true);
     vm.expectCall(gsm, abi.encodeCall(IGsm.setSwapFreeze, (true)));
     vm.expectEmit(address(robot));
     emit IGsmFreezerReceiver.SwapFreezeSet(true);
@@ -204,7 +193,7 @@ contract GsmFreezerReceiverTest is Test {
   }
 
   function test_onReport_unfreezes_whenPriceBackInUnfreezeBand() public {
-    _mockState(1e8, true, false, true);
+    _mockState(PEG_PRICE, true, false, true);
     vm.expectCall(gsm, abi.encodeCall(IGsm.setSwapFreeze, (false)));
     vm.expectEmit(address(robot));
     emit IGsmFreezerReceiver.SwapFreezeSet(false);
@@ -214,95 +203,33 @@ contract GsmFreezerReceiverTest is Test {
   }
 
   function test_onReport_revertsWith_NoActionPossible_whenPriceRecoveredBeforeExecution() public {
-    _mockState(0.90e8, false, false, true);
+    _mockState(DEPEGGED_PRICE, false, false, true);
     _assertAction(robot, IGsmFreezerReceiver.Action.FREEZE);
 
-    _mockState(1e8, false, false, true);
+    _mockState(PEG_PRICE, false, false, true);
     vm.expectCall(gsm, abi.encodeWithSelector(IGsm.setSwapFreeze.selector), 0);
     vm.prank(anyone);
     vm.expectRevert(IGsmFreezerReceiver.NoActionPossible.selector);
     robot.onReport('', abi.encode(IGsmFreezerReceiver.Action.FREEZE));
   }
 
+  function test_onReport_revertsWith_AutomationIsDisabled_whenDepegged() public {
+    _mockState(DEPEGGED_PRICE, false, false, true);
+    vm.prank(guardian);
+    robot.disableAutomation();
+
+    vm.expectCall(gsm, abi.encodeWithSelector(IGsm.setSwapFreeze.selector), 0);
+    vm.prank(anyone);
+    vm.expectRevert(IWorkflowsBase.AutomationIsDisabled.selector);
+    robot.onReport('', '');
+  }
+
   function test_onReport_revertsWith_NoActionPossible_whenSeized() public {
-    _mockState(0.90e8, false, true, true);
+    _mockState(DEPEGGED_PRICE, false, true, true);
     vm.expectCall(gsm, abi.encodeWithSelector(IGsm.setSwapFreeze.selector), 0);
     vm.prank(anyone);
     vm.expectRevert(IGsmFreezerReceiver.NoActionPossible.selector);
     robot.onReport('', '');
-  }
-
-  function test_disableAutomation_byOwner() public {
-    vm.expectEmit(address(robot));
-    emit IGsmFreezerReceiver.AutomationDisabled(true);
-
-    vm.prank(owner);
-    robot.disableAutomation();
-    assertTrue(robot.isDisabled(), 'automation not disabled');
-  }
-
-  function test_disableAutomation_byGuardian() public {
-    vm.prank(guardian);
-    robot.disableAutomation();
-    assertTrue(robot.isDisabled(), 'automation not disabled');
-  }
-
-  function test_disableAutomation_revertsWith_NotOwnerOrGuardian() public {
-    vm.prank(anyone);
-    vm.expectRevert(
-      abi.encodeWithSelector(IWithGuardian.OnlyGuardianOrOwnerInvalidCaller.selector, anyone)
-    );
-    robot.disableAutomation();
-  }
-
-  function test_disableAutomation_revertsWith_AutomationStatusUnchanged() public {
-    vm.prank(guardian);
-    robot.disableAutomation();
-
-    vm.prank(guardian);
-    vm.expectRevert(
-      abi.encodeWithSelector(IGsmFreezerReceiver.AutomationStatusUnchanged.selector, true)
-    );
-    robot.disableAutomation();
-  }
-
-  function test_enableAutomation() public {
-    vm.prank(guardian);
-    robot.disableAutomation();
-
-    vm.expectEmit(address(robot));
-    emit IGsmFreezerReceiver.AutomationDisabled(false);
-
-    vm.prank(owner);
-    robot.enableAutomation();
-    assertFalse(robot.isDisabled(), 'automation still disabled');
-  }
-
-  function test_enableAutomation_revertsWhenCalledByGuardian() public {
-    vm.prank(guardian);
-    robot.disableAutomation();
-
-    vm.prank(guardian);
-    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, guardian));
-    robot.enableAutomation();
-  }
-
-  function test_enableAutomation_revertsWith_AutomationStatusUnchanged() public {
-    vm.prank(owner);
-    vm.expectRevert(
-      abi.encodeWithSelector(IGsmFreezerReceiver.AutomationStatusUnchanged.selector, false)
-    );
-    robot.enableAutomation();
-  }
-
-  function test_rescueGuardian_isOwner() public view {
-    assertEq(robot.rescueGuardian(), owner, 'rescue guardian is not the owner');
-  }
-
-  function test_rescueToken_revertsWith_OnlyRescueGuardian() public {
-    vm.prank(guardian);
-    vm.expectRevert(IRescuable.OnlyRescueGuardian.selector);
-    robot.rescueToken(makeAddr('token'), anyone, 100);
   }
 
   function _deploy(
