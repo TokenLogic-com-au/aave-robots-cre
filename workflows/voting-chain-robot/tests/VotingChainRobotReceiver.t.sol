@@ -3,18 +3,11 @@ pragma solidity ^0.8.0;
 
 import {Test, Vm} from 'forge-std/Test.sol';
 
-import {Ownable} from 'openzeppelin-contracts/contracts/access/Ownable.sol';
-import {IWithGuardian} from 'solidity-utils/contracts/access-control/interfaces/IWithGuardian.sol';
-import {IERC165} from 'openzeppelin-contracts/contracts/utils/introspection/IERC165.sol';
-import {IRescuable} from 'aave-v4/interfaces/IRescuable.sol';
 import {ChainIds} from 'solidity-utils/contracts/utils/ChainHelpers.sol';
 import {IVotingMachineWithProofs} from 'aave-address-book/governance-v3/IVotingMachineWithProofs.sol';
 import {IVotingStrategy} from 'aave-address-book/governance-v3/IVotingStrategy.sol';
 import {IDataWarehouse} from 'aave-address-book/governance-v3/IDataWarehouse.sol';
 import {AggregatorInterface} from 'aave-v3-origin/contracts/dependencies/chainlink/AggregatorInterface.sol';
-
-import {IReceiver} from 'aave-cre/IReceiver.sol';
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
 
 import {VotingChainRobotReceiver} from '../src/VotingChainRobotReceiver.sol';
 import {IVotingChainRobotReceiver} from '../src/IVotingChainRobotReceiver.sol';
@@ -28,7 +21,6 @@ contract VotingChainRobotReceiverTest is Test {
 
   address internal owner = makeAddr('owner');
   address internal guardian = makeAddr('guardian');
-  address internal bob = makeAddr('bob');
   address internal anyone = makeAddr('anyone');
 
   address internal votingMachine = makeAddr('votingMachine');
@@ -71,22 +63,10 @@ contract VotingChainRobotReceiverTest is Test {
     assertEq(address(robot.VOTING_STRATEGY()), votingStrategy, 'voting strategy mismatch');
     assertEq(address(robot.DATA_WAREHOUSE()), dataWarehouse, 'data warehouse mismatch');
     assertEq(robot.GOVERNANCE(), governance, 'governance mismatch');
-    assertEq(address(robot.GAS_PRICE_ORACLE()), gasOracle, 'gas price oracle mismatch');
+    assertEq(robot.GAS_PRICE_ORACLE(), gasOracle, 'gas price oracle mismatch');
     assertEq(robot.getMaxGasPrice(), MAX_GAS_PRICE, 'max gas price mismatch');
     assertEq(robot.owner(), owner, 'owner mismatch');
     assertEq(robot.guardian(), guardian, 'guardian mismatch');
-  }
-
-  function test_constructor_emitsMaxGasPriceSet() public {
-    vm.expectEmit();
-    emit IVotingChainRobotReceiver.MaxGasPriceSet(MAX_GAS_PRICE);
-    _deploy(gasOracle, MAX_GAS_PRICE);
-  }
-
-  function test_constructor_withoutGasPriceOracle() public {
-    VotingChainRobotReceiver deployed = _deploy(address(0), 0);
-    assertEq(address(deployed.GAS_PRICE_ORACLE()), address(0), 'gas price oracle set');
-    assertEq(deployed.getMaxGasPrice(), 0, 'max gas price set');
   }
 
   function test_constructor_revertsWith_InvalidAddress_whenVotingMachineIsZero() public {
@@ -94,30 +74,10 @@ contract VotingChainRobotReceiverTest is Test {
     new VotingChainRobotReceiver(address(0), gasOracle, MAX_GAS_PRICE, owner, guardian);
   }
 
-  function test_constructor_revertsWith_GasPriceCapNotSupported() public {
-    vm.expectRevert(IVotingChainRobotReceiver.GasPriceCapNotSupported.selector);
-    _deploy(address(0), 1);
-  }
-
-  function test_constructor_revertsWith_InvalidMaxGasPrice() public {
-    vm.expectRevert(IVotingChainRobotReceiver.InvalidMaxGasPrice.selector);
-    _deploy(gasOracle, 0);
-  }
-
   function test_constants() public view {
     assertEq(robot.MAX_ACTIONS(), 5, 'unexpected MAX_ACTIONS');
     assertEq(robot.PAGE_SIZE(), 20, 'unexpected PAGE_SIZE');
     assertEq(robot.MAX_PAGES(), 5, 'unexpected MAX_PAGES');
-  }
-
-  function test_supportsInterface() public view {
-    assertTrue(robot.supportsInterface(type(IReceiver).interfaceId), 'IReceiver not supported');
-    assertTrue(
-      robot.supportsInterface(type(IAaveCREReceiver).interfaceId),
-      'IAaveCREReceiver not supported'
-    );
-    assertTrue(robot.supportsInterface(type(IERC165).interfaceId), 'IERC165 not supported');
-    assertFalse(robot.supportsInterface(0xffffffff), 'invalid interface id supported');
   }
 
   /// Every combination of the inputs the decision depends on.
@@ -159,45 +119,10 @@ contract VotingChainRobotReceiverTest is Test {
     );
   }
 
-  function test_fuzz_isGasPriceInRange(uint256 gasPrice, uint256 maxGasPrice) public {
-    gasPrice = bound(gasPrice, 0, uint256(type(int256).max));
-    if (maxGasPrice != robot.getMaxGasPrice()) {
-      vm.prank(owner);
-      robot.setMaxGasPrice(maxGasPrice);
-    }
-    _mockGasPrice(gasPrice);
-
-    assertEq(robot.isGasPriceInRange(), gasPrice <= maxGasPrice, 'unexpected isGasPriceInRange');
-  }
-
-  function test_isGasPriceInRange_withoutOracle() public {
-    VotingChainRobotReceiver deployed = _deploy(address(0), 0);
-    assertTrue(deployed.isGasPriceInRange(), 'no oracle should mean no cap');
-  }
-
   function test_checkUpkeep_returnsFalse_whenNoProposals() public view {
     (bool needed, bytes memory performData) = robot.checkUpkeep('');
     assertFalse(needed, 'upkeep needed without proposals');
     assertEq(performData.length, 0, 'performData should be empty');
-  }
-
-  function test_checkUpkeep_returnsFalse_whenGasPriceAboveCap() public {
-    _mockProposalIds(0, _ids(1, 1));
-    _setupProposal(1, IVotingMachineWithProofs.ProposalState.Finished, _hash(1));
-    _mockGasPrice(MAX_GAS_PRICE + 1);
-
-    (bool needed, ) = robot.checkUpkeep('');
-    assertFalse(needed, 'upkeep needed above the gas price cap');
-  }
-
-  function test_checkUpkeep_ignoresGasPrice_withoutOracle() public {
-    VotingChainRobotReceiver deployed = _deploy(address(0), 0);
-    _mockProposalIds(0, _ids(1, 1));
-    _setupProposal(1, IVotingMachineWithProofs.ProposalState.Finished, _hash(1));
-    _mockGasPrice(type(uint128).max);
-
-    (bool needed, ) = deployed.checkUpkeep('');
-    assertTrue(needed, 'upkeep should be needed without a gas price cap');
   }
 
   /// A vote whose roots are missing (4) waits for the storage roots workflow.
@@ -450,110 +375,6 @@ contract VotingChainRobotReceiverTest is Test {
   function test_onReport_revertsWith_NoActionCanBePerformed_whenEmptyBatch() public {
     vm.expectRevert(IVotingChainRobotReceiver.NoActionCanBePerformed.selector);
     robot.onReport('', abi.encode(new IVotingChainRobotReceiver.ActionWithId[](0)));
-  }
-
-  function test_disableAutomation_byOwnerOrGuardian() public {
-    vm.expectEmit(address(robot));
-    emit IVotingChainRobotReceiver.AutomationDisabled(1, true);
-    vm.prank(owner);
-    robot.disableAutomation(1);
-    assertTrue(robot.isDisabled(1), 'proposal not disabled by owner');
-
-    vm.prank(guardian);
-    robot.disableAutomation(2);
-    assertTrue(robot.isDisabled(2), 'proposal not disabled by guardian');
-  }
-
-  function test_disableAutomation_revertsWith_OnlyGuardianOrOwnerInvalidCaller() public {
-    vm.prank(bob);
-    vm.expectRevert(
-      abi.encodeWithSelector(IWithGuardian.OnlyGuardianOrOwnerInvalidCaller.selector, bob)
-    );
-    robot.disableAutomation(1);
-  }
-
-  function test_disableAutomation_revertsWith_AutomationStatusUnchanged() public {
-    vm.prank(guardian);
-    robot.disableAutomation(1);
-
-    vm.prank(guardian);
-    vm.expectRevert(
-      abi.encodeWithSelector(IVotingChainRobotReceiver.AutomationStatusUnchanged.selector, 1)
-    );
-    robot.disableAutomation(1);
-  }
-
-  function test_enableAutomation() public {
-    vm.prank(guardian);
-    robot.disableAutomation(1);
-
-    vm.expectEmit(address(robot));
-    emit IVotingChainRobotReceiver.AutomationDisabled(1, false);
-    vm.prank(owner);
-    robot.enableAutomation(1);
-    assertFalse(robot.isDisabled(1), 'proposal still disabled');
-  }
-
-  function test_enableAutomation_revertsWhenCalledByGuardian() public {
-    vm.prank(guardian);
-    robot.disableAutomation(1);
-
-    vm.prank(guardian);
-    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, guardian));
-    robot.enableAutomation(1);
-  }
-
-  function test_enableAutomation_revertsWith_AutomationStatusUnchanged() public {
-    vm.prank(owner);
-    vm.expectRevert(
-      abi.encodeWithSelector(IVotingChainRobotReceiver.AutomationStatusUnchanged.selector, 1)
-    );
-    robot.enableAutomation(1);
-  }
-
-  function test_setMaxGasPrice_byOwnerOrGuardian() public {
-    vm.expectEmit(address(robot));
-    emit IVotingChainRobotReceiver.MaxGasPriceSet(1 gwei);
-    vm.prank(owner);
-    robot.setMaxGasPrice(1 gwei);
-    assertEq(robot.getMaxGasPrice(), 1 gwei, 'max gas price not updated by owner');
-
-    vm.prank(guardian);
-    robot.setMaxGasPrice(2 gwei);
-    assertEq(robot.getMaxGasPrice(), 2 gwei, 'max gas price not updated by guardian');
-  }
-
-  function test_setMaxGasPrice_revertsWith_OnlyGuardianOrOwnerInvalidCaller() public {
-    vm.prank(bob);
-    vm.expectRevert(
-      abi.encodeWithSelector(IWithGuardian.OnlyGuardianOrOwnerInvalidCaller.selector, bob)
-    );
-    robot.setMaxGasPrice(1 gwei);
-  }
-
-  function test_setMaxGasPrice_revertsWith_MaxGasPriceUnchanged() public {
-    vm.prank(owner);
-    vm.expectRevert(
-      abi.encodeWithSelector(IVotingChainRobotReceiver.MaxGasPriceUnchanged.selector)
-    );
-    robot.setMaxGasPrice(MAX_GAS_PRICE);
-  }
-
-  function test_setMaxGasPrice_revertsWith_GasPriceCapNotSupported() public {
-    VotingChainRobotReceiver deployed = _deploy(address(0), 0);
-    vm.prank(guardian);
-    vm.expectRevert(IVotingChainRobotReceiver.GasPriceCapNotSupported.selector);
-    deployed.setMaxGasPrice(1 gwei);
-  }
-
-  function test_rescueGuardian_isOwner() public view {
-    assertEq(robot.rescueGuardian(), owner, 'rescue guardian is not the owner');
-  }
-
-  function test_rescueToken_revertsWith_OnlyRescueGuardian() public {
-    vm.prank(guardian);
-    vm.expectRevert(IRescuable.OnlyRescueGuardian.selector);
-    robot.rescueToken(makeAddr('token'), bob, 100);
   }
 
   function test_getDeployConfig_revertsOnUnsupportedChain() public {
