@@ -1,21 +1,14 @@
 import {describe, expect} from 'bun:test';
-import {TxStatus, getNetwork} from '@chainlink/cre-sdk';
+import {TxStatus} from '@chainlink/cre-sdk';
 import {EvmMock, newTestRuntime, test} from '@chainlink/cre-sdk/test';
-import {bytesToHex, hexToBytes, type Hex} from 'viem';
+import {hexToBytes, type Hex} from 'viem';
 
-import {
-  CHECK_UPKEEP_SELECTOR,
-  encodeCheckUpkeepResult,
-  type CallContractInput,
-} from '../../shared/offchain/testing/mocks';
-import {createExecutorHandler, initWorkflow} from './workflow';
+import {EVERY_10_MINUTES} from '../../shared/offchain/constants';
+import {chainSelectorOf, checkUpkeepMock} from '../../shared/offchain/testing/mocks';
+import {createExecutorHandler, encodeCheckData, initWorkflow} from './workflow';
 
 const CHAIN_NAME = 'avalanche-mainnet';
-const CHAIN_SELECTOR = getNetwork({
-  chainFamily: 'evm',
-  chainSelectorName: CHAIN_NAME,
-  isTestnet: false,
-})!.chainSelector.selector;
+const CHAIN_SELECTOR = chainSelectorOf(CHAIN_NAME);
 
 const RECEIVER = '0x1111111111111111111111111111111111111111' as Hex;
 const EXECUTOR = '0x2222222222222222222222222222222222222222' as Hex;
@@ -30,17 +23,6 @@ const NETWORK = {
   executors: [EXECUTOR],
 };
 
-// Mocks callContract for a single checkUpkeep call, returning the given result.
-function checkUpkeepMock(upkeepNeeded: boolean, performData: Hex = PERFORM_DATA) {
-  return (req: CallContractInput): {data: Uint8Array} => {
-    const selector = bytesToHex(req.call.data).slice(0, 10).toLowerCase();
-    if (selector === CHECK_UPKEEP_SELECTOR) {
-      return {data: encodeCheckUpkeepResult(upkeepNeeded, performData)};
-    }
-    throw new Error(`checkUpkeepMock: unmocked selector ${selector}`);
-  };
-}
-
 const handle = createExecutorHandler(NETWORK, EXECUTOR);
 
 describe('proof-of-reserve workflow', () => {
@@ -49,6 +31,15 @@ describe('proof-of-reserve workflow', () => {
     evmMock.callContract = checkUpkeepMock(false, '0x');
 
     expect(handle(newTestRuntime() as never)).toBe('No emergency action needed');
+  });
+
+  test('sends only the executor as checkData', () => {
+    const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
+    let checkData: Hex | undefined;
+    evmMock.callContract = checkUpkeepMock(false, '0x', (data) => (checkData = data));
+
+    handle(newTestRuntime() as never);
+    expect(checkData).toBe(encodeCheckData(EXECUTOR));
   });
 
   test('returns "No emergency action needed" when checkUpkeep returns empty data', () => {
@@ -75,7 +66,7 @@ describe('proof-of-reserve workflow', () => {
 
   test('returns "submit skipped" when estimateGas reverts', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = checkUpkeepMock(true);
+    evmMock.callContract = checkUpkeepMock(true, PERFORM_DATA);
     evmMock.estimateGas = () => {
       throw new Error('reverted');
     };
@@ -85,7 +76,7 @@ describe('proof-of-reserve workflow', () => {
 
   test('submits the report and returns the tx hash on success', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = checkUpkeepMock(true);
+    evmMock.callContract = checkUpkeepMock(true, PERFORM_DATA);
     evmMock.estimateGas = () => ({gas: 100_000n});
     evmMock.writeReport = () => ({txStatus: TxStatus.SUCCESS, txHash: hexToBytes(TX_HASH)});
 
@@ -94,7 +85,7 @@ describe('proof-of-reserve workflow', () => {
 
   test('returns "submit skipped" and logs when writeReport is not SUCCESS', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = checkUpkeepMock(true);
+    evmMock.callContract = checkUpkeepMock(true, PERFORM_DATA);
     evmMock.estimateGas = () => ({gas: 100_000n});
     evmMock.writeReport = () => ({
       txStatus: TxStatus.REVERTED,
@@ -116,7 +107,7 @@ describe('proof-of-reserve workflow', () => {
 describe('initWorkflow', () => {
   test('creates one handler per executor', () => {
     const handlers = initWorkflow({
-      schedule: '* * * * *',
+      schedule: EVERY_10_MINUTES,
       evms: [
         {
           chainName: CHAIN_NAME,
@@ -131,7 +122,7 @@ describe('initWorkflow', () => {
 
   test('skips networks with empty receiver', () => {
     const handlers = initWorkflow({
-      schedule: '* * * * *',
+      schedule: EVERY_10_MINUTES,
       evms: [{chainName: CHAIN_NAME, isTestnet: false, receiver: '', executors: [EXECUTOR]}],
     });
     expect(handlers.length).toBe(0);

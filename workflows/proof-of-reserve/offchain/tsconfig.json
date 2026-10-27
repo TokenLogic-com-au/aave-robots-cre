@@ -16,5 +16,6 @@
     "workflow.ts",
     "types.ts",
     "../../shared/offchain/**/*.ts"
-  ]
+  ],
+  "exclude": ["../../shared/offchain/tests"]
 }

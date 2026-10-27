@@ -1,15 +1,12 @@
 import {z} from 'zod';
 
-export const networkSchema = z.object({
-  chainName: z.string(),
-  isTestnet: z.boolean().default(false),
-  receiver: z.string(),
-  executors: z.array(z.string()),
-});
-export type NetworkConfig = z.infer<typeof networkSchema>;
+import {addressSchema, createConfigSchema, networkSchema} from '../../shared/offchain/config';
 
-export const configSchema = z.object({
-  schedule: z.string(),
-  evms: z.array(networkSchema),
+export const proofOfReserveNetworkSchema = networkSchema.extend({
+  // Proof of Reserve executors, one per Aave pool (e.g. Avalanche v2 + v3).
+  executors: z.array(addressSchema),
 });
+export type NetworkConfig = z.infer<typeof proofOfReserveNetworkSchema>;
+
+export const configSchema = createConfigSchema(proofOfReserveNetworkSchema);
 export type Config = z.infer<typeof configSchema>;
