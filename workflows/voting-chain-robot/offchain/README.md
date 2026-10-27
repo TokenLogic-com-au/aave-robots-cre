@@ -1,16 +1,12 @@
 # Voting Chain Robot — CRE workflow
 
 Off-chain CRE workflow driving [`VotingChainRobotReceiver`](../src/VotingChainRobotReceiver.sol)
-on the three Governance V3 voting chains, one cron trigger per chain, every 30 seconds like
-the other governance robots. Each run calls the receiver's `checkUpkeep` (empty
-`checkData`), estimates `onReport` once with the returned `performData`, then signs it and
-writes it without `gasConfig`: the DON attaches its default limit, the 16,777,216 quota (also
-Ethereum's EIP-7825 per-tx cap, so an explicit limit equal to it could be rejected).
-
-A write is skipped and logged when `estimate * 64/63 + WRITE_OVERHEAD_GAS` (250k, the
-forwarder's report verification) exceeds `MAX_WRITE_GAS` (16,777,216, the CRE quota). A
-full batch of 5 actions stays well below (a `closeAndSendVote` costs ~1.1M). A write whose
-`onReport` reverted inside the forwarder tx is logged and reported as `onReport reverted`.
+on the three Governance V3 voting chains, one cron trigger per chain, every 10 minutes like
+the other governance robots (`GOVERNANCE_SCHEDULE`). Each run calls the receiver's
+`checkUpkeep` (empty `checkData`) and passes the returned `performData` to the shared
+`submitReport`, which estimates `onReport`, skips the write if it would revert or not fit
+the CRE write quota, and logs a write whose `onReport` reverted inside the forwarder tx. A
+full batch of 5 actions stays well below the quota (a `closeAndSendVote` costs ~1.1M).
 
 ## Config
 

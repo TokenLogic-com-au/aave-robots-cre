@@ -11,7 +11,7 @@ and its gas capped variant. One receiver per voting chain: Ethereum, Avalanche a
 ```
 voting-chain-robot/
 ├── src/
-│   ├── VotingChainRobotReceiver.sol        # the robot — inherits IAaveCREReceiver, permissionless onReport
+│   ├── VotingChainRobotReceiver.sol        # the robot — GasCappedWorkflowsBase + IdDenylist, permissionless onReport
 │   └── IVotingChainRobotReceiver.sol       # robot interface
 ├── tests/
 │   ├── VotingChainRobotReceiver.t.sol      # unit tests (vm.mockCall against the voting machine & co.)
@@ -25,7 +25,10 @@ voting-chain-robot/
 
 ## On-chain behavior
 
-`VotingChainRobotReceiver` implements [`IAaveCREReceiver`](../shared/src/IAaveCREReceiver.sol):
+`VotingChainRobotReceiver` extends the shared
+[`GasCappedWorkflowsBase`](../shared/src/GasCappedWorkflowsBase.sol) and
+[`IdDenylist`](../shared/src/IdDenylist.sol), and implements their `_checkUpkeep` /
+`_onReport`:
 
 - `checkUpkeep(_) → (needed, ActionWithId[])` — reads the proposals with a vote
   configuration from the latest backwards, `PAGE_SIZE` (20) at a time, while pages are
@@ -34,7 +37,7 @@ voting-chain-robot/
   disabled: `PerformCreateVote` when the vote isn't created and the roots of its L1 block
   hash are registered (`hasRequiredRoots` plus the governance representatives root, as
   `startProposalVote` checks), `PerformCloseAndSendVote` when voting ended and the result
-  wasn't sent. Nothing while the gas price is above the cap.
+  wasn't sent.
 - `onReport(metadata, ActionWithId[])` — calls `startProposalVote` / `closeAndSendVote`,
   oldest proposal first, for each action still due on a proposal not disabled. A reverting
   action is caught; reverts `NoActionCanBePerformed` if nothing ran.
@@ -42,8 +45,9 @@ voting-chain-robot/
 `onReport` is **permissionless**: both voting machine calls are permissionless and check
 the same conditions.
 
-With a `GAS_PRICE_ORACLE` (Ethereum only, Chainlink "Fast Gas / Gwei") `checkUpkeep`
-reports nothing while the feed answers above `getMaxGasPrice()`; `onReport` doesn't check it.
+With a `GAS_PRICE_ORACLE` (Ethereum only, Chainlink "Fast Gas / Gwei") the base's
+`checkUpkeep` reports nothing while the feed answers above `getMaxGasPrice()`; `onReport`
+doesn't check it. Avalanche and Polygon are deployed without a feed, so uncapped.
 
 ### Storage roots
 
@@ -64,19 +68,23 @@ proposal whose roots are missing waits for them.
 - `onReport` skips disabled proposals and catches reverting actions instead of reverting
   the batch.
 - One contract for both keepers; `setMaxGasPrice` is owner or guardian.
+- A global switch (`disableAutomation()`) stops the whole robot on top of the per-proposal
+  one.
 - As with BGD's keeper, a deprecated Fast Gas feed makes `checkUpkeep` revert until the
   receiver is redeployed.
 
 ### State and access control
 
-- `disableAutomation(id)` — owner or guardian; `enableAutomation(id)` — owner. Both revert
-  `AutomationStatusUnchanged` when the status doesn't change and emit
-  `AutomationDisabled(id, disabled)`. A denylist: new proposals need no configuration.
-- `setMaxGasPrice(maxGasPrice)` — owner or guardian. Reverts `MaxGasPriceUnchanged` for the
-  current value and `GasPriceCapNotSupported` without oracle. `setMaxGasPrice(0)` is the
-  guardian's emergency pause on Ethereum; the constructor rejects 0 with an oracle (and any
-  cap without) only to catch deploy mistakes.
-- The contract is `Rescuable`; the owner is the rescue guardian.
+From the shared base (see the [root README](../../README.md)):
+
+- `disableAutomation()` / `enableAutomation()` — the global switch. While disabled
+  `checkUpkeep` reports nothing and `onReport` reverts `AutomationIsDisabled`.
+- `disableAutomation(id)` / `enableAutomation(id)` — the per-proposal denylist: new
+  proposals need no configuration, disabled ones are skipped by `checkUpkeep` and `onReport`.
+- `setMaxGasPrice(maxGasPrice)` — owner or guardian, Ethereum only. `setMaxGasPrice(0)` is
+  the guardian's emergency pause there.
+- Disabling is owner or guardian, enabling owner only. The contract is `Rescuable`, with the
+  owner as rescue guardian.
 
 ## Testing
 
@@ -97,8 +105,8 @@ proposal 531 and checks the Ethereum gas cap.
 
 `DeployVotingChainRobotReceiver` picks the config from `block.chainid`: the chain's
 `GovernanceV3<Chain>.VOTING_MACHINE` (data warehouse, voting strategy and governance are
-read from it) and `EXECUTOR_LVL_1` / `GOVERNANCE_GUARDIAN` as owner / guardian. Ethereum
-also gets the Fast Gas feed and the keeper's cap, 150 gwei.
+read from it) and the owner / guardian from `GovernanceOwners`. Ethereum also gets the Fast
+Gas feed and the keeper's cap, 150 gwei.
 
 ```bash
 # from repo root, with ACCOUNT_NAME=<your-keystore-name> in .env; env: Mainnet, Avalanche or Polygon
