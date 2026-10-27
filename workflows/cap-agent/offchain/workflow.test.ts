@@ -1,31 +1,20 @@
 import {describe, expect} from 'bun:test';
-import {TxStatus, getNetwork} from '@chainlink/cre-sdk';
-import {EVM_PB} from '@chainlink/cre-sdk/pb';
+import {getNetwork, TxStatus} from '@chainlink/cre-sdk';
 import {EvmMock, newTestRuntime, test} from '@chainlink/cre-sdk/test';
 import {bytesToHex, decodeFunctionData, hexToBytes, type Hex} from 'viem';
 
-import {
-  CHECK_UPKEEP_SELECTOR,
-  encodeCheckUpkeepResult,
-  type CallContractInput,
-} from '../../shared/offchain/testing/mocks';
 import {IAaveCREReceiverABI} from '../../shared/offchain/abi/IAaveCREReceiver';
-import {
-  MAX_WRITE_GAS,
-  WRITE_OVERHEAD_GAS,
-  configSchema,
-  createReceiverHandler,
-  fitsWriteGasQuota,
-  initWorkflow,
-} from './workflow';
+import {MAX_WRITE_GAS} from '../../shared/offchain/constants';
+import {chainSelectorOf, checkUpkeepMock} from '../../shared/offchain/testing/mocks';
+import {configSchema, initWorkflow} from './workflow';
 import productionConfig from './config.production.json';
 
+// CRE caps triggers per workflow (PerWorkflow.TriggerSubscriptionLimit).
+const MAX_TRIGGERS = 10;
+
 const CHAIN_NAME = 'avalanche-mainnet';
-const CHAIN_SELECTOR = getNetwork({
-  chainFamily: 'evm',
-  chainSelectorName: CHAIN_NAME,
-  isTestnet: false,
-})!.chainSelector.selector;
+const CHAIN_SELECTOR = chainSelectorOf(CHAIN_NAME);
+const SCHEDULE = '*/5 * * * *';
 
 const RECEIVER = '0x1111111111111111111111111111111111111111' as Hex;
 const TX_HASH = ('0xab' + 'cd'.repeat(31)) as Hex;
@@ -34,98 +23,60 @@ const PERFORM_DATA = '0xdeadbeef' as Hex;
 
 const NETWORK = {chainName: CHAIN_NAME, isTestnet: false, receiver: RECEIVER};
 
-// Mocks callContract for a single checkUpkeep call, returning the given result.
-function checkUpkeepMock(upkeepNeeded: boolean, performData: Hex = PERFORM_DATA) {
-  return (req: CallContractInput): {data: Uint8Array} => {
-    const selector = bytesToHex(req.call.data).slice(0, 10).toLowerCase();
-    if (selector === CHECK_UPKEEP_SELECTOR) {
-      return {data: encodeCheckUpkeepResult(upkeepNeeded, performData)};
-    }
-    throw new Error(`checkUpkeepMock: unmocked selector ${selector}`);
-  };
+function handle(runtime = newTestRuntime(), network = NETWORK): string {
+  const [entry] = initWorkflow({schedule: SCHEDULE, evms: [network]});
+  return entry.fn(runtime as never, undefined as never);
 }
 
-// Largest estimate that still fits the write gas limit with the forwarder margin.
-const MAX_ESTIMATE = ((MAX_WRITE_GAS - WRITE_OVERHEAD_GAS) * 63n) / 64n;
-
-// Mocks a pending injection estimated at `gas`, recording each write's receiver and gasConfig.
-function pendingInjection(gas: bigint) {
+// Mocks a pending injection estimated at 100k gas, recording each write.
+function pendingInjection() {
   const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-  evmMock.callContract = checkUpkeepMock(true);
-  evmMock.estimateGas = () => ({gas});
-  const writes: {receiver: Hex; gasConfig?: unknown}[] = [];
+  evmMock.callContract = checkUpkeepMock(true, PERFORM_DATA);
+  evmMock.estimateGas = () => ({gas: 100_000n});
+  const writes: {receiver: Hex; gasLimit?: string}[] = [];
   evmMock.writeReport = (input) => {
-    writes.push({receiver: bytesToHex(input.receiver), gasConfig: input.gasConfig});
+    writes.push({
+      receiver: bytesToHex(input.receiver),
+      gasLimit: input.gasConfig?.gasLimit?.toString(),
+    });
     return {txStatus: TxStatus.SUCCESS, txHash: hexToBytes(TX_HASH)};
   };
   return writes;
 }
 
-// No gasConfig: the DON attaches its default gas limit, the quota.
-const WRITTEN = [{receiver: RECEIVER, gasConfig: undefined}];
-
-const handle = createReceiverHandler(NETWORK);
-
 describe('cap-agent workflow', () => {
-  test('returns "No injection needed" when checkUpkeep is false', () => {
-    const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = checkUpkeepMock(false, '0x');
-
-    expect(handle(newTestRuntime() as never)).toBe('No injection needed');
-  });
-
-  test('sends empty checkData', () => {
-    const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
+  test('sends empty checkData and returns "No injection needed" when checkUpkeep is false', () => {
     let checkData: Hex | undefined;
-    evmMock.callContract = (req: CallContractInput) => {
-      const {args} = decodeFunctionData({
-        abi: IAaveCREReceiverABI,
-        data: bytesToHex(req.call.data),
-      });
-      checkData = args?.[0] as Hex;
-      return {data: encodeCheckUpkeepResult(false, '0x')};
-    };
+    EvmMock.testInstance(CHAIN_SELECTOR).callContract = checkUpkeepMock(
+      false,
+      '0x',
+      (d) => (checkData = d),
+    );
 
-    handle(newTestRuntime() as never);
+    expect(handle()).toBe('No injection needed');
     expect(checkData).toBe('0x');
   });
 
-  test('returns "No injection needed" when checkUpkeep returns empty data', () => {
-    const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = () => ({data: new Uint8Array(0)});
-
-    const runtime = newTestRuntime();
-    expect(handle(runtime as never)).toBe('No injection needed');
-    expect(runtime.getLogs().find((l) => l.includes('returned empty data'))).toBeDefined();
-  });
-
-  test('returns "No injection needed" and logs when checkUpkeep reverts', () => {
-    const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = () => {
+  test('returns "No injection needed" when checkUpkeep reverts', () => {
+    EvmMock.testInstance(CHAIN_SELECTOR).callContract = () => {
       throw new Error('checkUpkeep reverted');
     };
 
-    const runtime = newTestRuntime();
-    expect(handle(runtime as never)).toBe('No injection needed');
-    expect(
-      runtime.getLogs().find((l) => l.includes('checkUpkeep reverted — skipping')),
-    ).toBeDefined();
+    expect(handle()).toBe('No injection needed');
   });
 
   test('returns "submit skipped" without writing when estimateGas reverts', () => {
-    const writes = pendingInjection(0n);
+    const writes = pendingInjection();
     EvmMock.testInstance(CHAIN_SELECTOR).estimateGas = () => {
       throw new Error('NoActionCanBePerformed');
     };
 
-    const runtime = newTestRuntime();
-    expect(handle(runtime as never)).toBe('submit skipped');
+    expect(handle()).toBe('submit skipped');
     expect(writes.length).toBe(0);
-    expect(runtime.getLogs().find((l) => l.includes('estimateGas failed'))).toBeDefined();
   });
 
-  test('estimates onReport with the checkUpkeep performData', () => {
-    pendingInjection(100_000n);
+  test('estimates and writes the checkUpkeep performData to the receiver', () => {
+    const writes = pendingInjection();
     let estimated: Hex | undefined;
     EvmMock.testInstance(CHAIN_SELECTOR).estimateGas = (req) => {
       const {functionName, args} = decodeFunctionData({
@@ -137,100 +88,41 @@ describe('cap-agent workflow', () => {
       return {gas: 100_000n};
     };
 
-    handle(newTestRuntime() as never);
+    expect(handle()).toBe(`injected, tx=${TX_HASH}`);
     expect(estimated).toBe(PERFORM_DATA);
+    expect(writes).toEqual([{receiver: RECEIVER, gasLimit: MAX_WRITE_GAS.toString()}]);
   });
 
-  test('skips and logs a write that does not fit the quota with the forwarder margin', () => {
-    const writes = pendingInjection(MAX_ESTIMATE + 64n);
-
-    const runtime = newTestRuntime();
-    expect(handle(runtime as never)).toBe('submit skipped: gas above quota');
-    expect(writes.length).toBe(0);
-    expect(
-      runtime.getLogs().find((l) => l.includes('exceeds the CRE write gas quota')),
-    ).toBeDefined();
-  });
-
-  test('submits the largest estimate that fits the quota with the forwarder margin', () => {
-    const writes = pendingInjection(MAX_ESTIMATE);
-
-    expect(handle(newTestRuntime() as never)).toBe(`injected, tx=${TX_HASH}`);
-    expect(writes).toEqual(WRITTEN);
-  });
-
-  test('fitsWriteGasQuota adds 1/63 and the forwarder overhead to the estimate', () => {
-    expect(MAX_WRITE_GAS).toBe(16_777_216n);
-    expect(WRITE_OVERHEAD_GAS).toBe(250_000n);
-    expect(fitsWriteGasQuota(MAX_ESTIMATE)).toBe(true);
-    expect(fitsWriteGasQuota(MAX_ESTIMATE + 64n)).toBe(false);
-    expect(fitsWriteGasQuota(MAX_WRITE_GAS - WRITE_OVERHEAD_GAS)).toBe(false);
-  });
-
-  test('writes to the receiver without a gasConfig and returns the tx hash', () => {
-    const writes = pendingInjection(100_000n);
-
-    expect(handle(newTestRuntime() as never)).toBe(`injected, tx=${TX_HASH}`);
-    expect(writes).toEqual(WRITTEN);
-  });
-
-  test('returns "submit skipped" and logs when onReport reverted in the forwarder tx', () => {
-    pendingInjection(100_000n);
-    EvmMock.testInstance(CHAIN_SELECTOR).writeReport = () => ({
-      txStatus: TxStatus.SUCCESS,
-      receiverContractExecutionStatus: EVM_PB.ReceiverContractExecutionStatus.REVERTED,
-      txHash: hexToBytes(TX_HASH),
-    });
-
-    const runtime = newTestRuntime();
-    expect(handle(runtime as never)).toBe('submit skipped');
-    expect(runtime.getLogs().find((l) => l.includes('onReport reverted'))).toBeDefined();
-  });
-
-  test('returns "submit skipped" and logs when writeReport is not SUCCESS', () => {
-    pendingInjection(100_000n);
+  test('returns "submit skipped" when the write fails', () => {
+    pendingInjection();
     EvmMock.testInstance(CHAIN_SELECTOR).writeReport = () => ({
       txStatus: TxStatus.REVERTED,
       txHash: new Uint8Array(0),
       errorMessage: 'reverted',
     });
 
-    const runtime = newTestRuntime();
-    expect(handle(runtime as never)).toBe('submit skipped');
-    expect(runtime.getLogs().find((l) => l.includes('writeReport status='))).toBeDefined();
-  });
-
-  test('returns "submit skipped" and logs when writeReport has no tx hash', () => {
-    pendingInjection(100_000n);
-    EvmMock.testInstance(CHAIN_SELECTOR).writeReport = () => ({
-      txStatus: TxStatus.SUCCESS,
-      txHash: new Uint8Array(0),
-    });
-
-    const runtime = newTestRuntime();
-    expect(handle(runtime as never)).toBe('submit skipped');
-    expect(runtime.getLogs().find((l) => l.includes('no txHash'))).toBeDefined();
+    expect(handle()).toBe('submit skipped');
   });
 
   test('returns "Network not found" for an unknown chain', () => {
-    const badHandle = createReceiverHandler({...NETWORK, chainName: 'made-up-chain'});
-    expect(badHandle(newTestRuntime() as never)).toBe('Network not found');
+    expect(handle(newTestRuntime(), {...NETWORK, chainName: 'made-up-chain'})).toBe(
+      'Network not found',
+    );
   });
 });
 
 describe('initWorkflow', () => {
   test('creates one cron handler per network with a receiver', () => {
     const handlers = initWorkflow({
-      schedule: '*/5 * * * *',
+      schedule: SCHEDULE,
       evms: [NETWORK, {...NETWORK, chainName: 'polygon-mainnet'}],
-    }) as unknown as {trigger: {config: Record<string, unknown>}}[];
+    });
     expect(handlers.length).toBe(2);
-    expect(handlers[0].trigger.config.schedule).toBe('*/5 * * * *');
+    expect(handlers[0].trigger.config.schedule).toBe(SCHEDULE);
   });
 
   test('skips networks with empty receiver', () => {
-    const handlers = initWorkflow({schedule: '* * * * *', evms: [{...NETWORK, receiver: ''}]});
-    expect(handlers.length).toBe(0);
+    expect(initWorkflow({schedule: SCHEDULE, evms: [{...NETWORK, receiver: ''}]}).length).toBe(0);
   });
 
   test('every production chain is a known CRE network', () => {
@@ -245,10 +137,9 @@ describe('initWorkflow', () => {
     }
   });
 
-  // CRE caps triggers per workflow at 10 (PerWorkflow.TriggerSubscriptionLimit).
   test('production config stays within the CRE trigger limit', () => {
     const config = configSchema.parse(productionConfig);
     const evms = config.evms.map((net) => ({...net, receiver: RECEIVER}));
-    expect(initWorkflow({...config, evms}).length).toBeLessThanOrEqual(10);
+    expect(initWorkflow({...config, evms}).length).toBeLessThanOrEqual(MAX_TRIGGERS);
   });
 });

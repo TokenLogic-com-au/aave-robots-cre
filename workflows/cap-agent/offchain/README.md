@@ -6,10 +6,10 @@ minutes, for each chain with a `receiver`, it calls the receiver's `checkUpkeep`
 back as the receiver's `onReport`. Faster polling adds nothing: the hub rate limits each
 agent and market with its minimum delay.
 
-Each write is estimated once and sent without a `gasConfig`, so the DON attaches its
-default gas limit, the CRE write quota (`MAX_WRITE_GAS`, 16,777,216). It is skipped and
-logged when `estimate * 64/63 + WRITE_OVERHEAD_GAS` (250k, forwarder verification and call)
-exceeds the quota, and reported as failed when `onReport` reverts inside the forwarder tx.
+The probe and the write go through the shared `shouldSubmit` / `submitReport` helpers
+([`checkUpkeep.ts`](../../shared/offchain/checkUpkeep.ts)): each write is estimated once,
+skipped when it would not fit the CRE write quota with the forwarder overhead, and reported
+as failed when `onReport` reverts inside the forwarder tx.
 
 ## Config
 
