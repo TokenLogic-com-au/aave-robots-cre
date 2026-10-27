@@ -1,7 +1,7 @@
 # ExecutionChainRobot — CRE workflow
 
 Off-chain CRE workflow driving [`ExecutionChainRobotReceiver`](../src/ExecutionChainRobotReceiver.sol).
-Every 30 seconds, per chain, it calls the receiver's `checkUpkeep` (empty `checkData`) and
+Every 10 minutes, per chain, it calls the receiver's `checkUpkeep` (empty `checkData`) and
 writes one report `abi.encode(uint40[] [payloadId])` to `onReport` for each payload returned,
 so a payload that reverts doesn't block the others.
 
