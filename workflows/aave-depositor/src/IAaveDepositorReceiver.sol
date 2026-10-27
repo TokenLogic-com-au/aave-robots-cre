@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
+import {IWorkflowsBase} from 'aave-cre/IWorkflowsBase.sol';
 
 /// @notice Minimal view of the Zodiac Roles Modifier (v2).
 interface IRolesModifier {
@@ -36,7 +36,7 @@ interface IPoolExposureSteward {
 /// @dev Both `checkData` and `report` are `abi.encode(bytes[] calls)`, each call being
 /// Steward calldata for one of the allowed selectors. `onReport` is permissioned: only
 /// the CRE forwarder may call it, optionally pinned to one workflow id.
-interface IAaveDepositorReceiver is IAaveCREReceiver {
+interface IAaveDepositorReceiver is IWorkflowsBase {
   /// @notice Emitted for every Steward call executed through the Roles Modifier.
   /// @param index Position of the call in the report.
   /// @param selector The Steward function executed.
@@ -45,10 +45,6 @@ interface IAaveDepositorReceiver is IAaveCREReceiver {
   /// @notice Emitted when the accepted workflow id changes. Zero accepts any workflow.
   /// @param workflowId The new expected workflow id.
   event ExpectedWorkflowIdSet(bytes32 workflowId);
-
-  /// @notice Emitted when the robot is excluded from / included in automation.
-  /// @param disabled Whether the robot is now excluded from automation.
-  event AutomationDisabled(bool disabled);
 
   /// @notice Thrown when a constructor address is zero.
   error ZeroAddress();
@@ -62,11 +58,12 @@ interface IAaveDepositorReceiver is IAaveCREReceiver {
   /// @notice Thrown when a call targets a Steward function the role does not allow.
   error SelectorNotAllowed(bytes4 selector);
 
-  /// @notice Thrown when `onReport` runs disabled or with an empty report.
+  /// @notice Thrown when `onReport` is called with an empty report.
   error NothingToExecute();
 
-  /// @notice Thrown when `setDisabled` is passed the current state.
-  error StateUnchanged();
+  /// @notice Pin `onReport` to one workflow id, or zero to accept any. Owner only.
+  /// @param workflowId The workflow id to accept.
+  function setExpectedWorkflowId(bytes32 workflowId) external;
 
   /// @notice The CRE forwarder allowed to call `onReport`.
   function FORWARDER() external view returns (address);
@@ -82,15 +79,4 @@ interface IAaveDepositorReceiver is IAaveCREReceiver {
 
   /// @notice The workflow id `onReport` accepts, or zero for any.
   function expectedWorkflowId() external view returns (bytes32);
-
-  /// @notice Pin `onReport` to one workflow id, or zero to accept any. Owner only.
-  /// @param workflowId The workflow id to accept.
-  function setExpectedWorkflowId(bytes32 workflowId) external;
-
-  /// @notice Whether the robot is excluded from automation.
-  function isDisabled() external view returns (bool);
-
-  /// @notice Exclude or include the robot from automation. Owner or guardian.
-  /// @param disabled Whether to exclude the robot from automation.
-  function setDisabled(bool disabled) external;
 }

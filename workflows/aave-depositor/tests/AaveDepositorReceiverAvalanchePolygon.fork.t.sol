@@ -15,6 +15,7 @@ import {MiscPolygon} from 'aave-address-book/MiscPolygon.sol';
 import {AaveDepositorReceiver} from '../src/AaveDepositorReceiver.sol';
 import {IPoolExposureSteward} from '../src/IAaveDepositorReceiver.sol';
 import {AaveDepositorNetworks} from '../scripts/AaveDepositorNetworks.sol';
+import {GovernanceOwners} from '../../shared/scripts/GovernanceOwners.sol';
 
 /// @dev Zodiac Roles v2 admin functions, called by the Roles owner (the AFC Safe).
 interface IRolesAdmin {
@@ -93,13 +94,14 @@ contract AaveDepositorReceiverAvalanchePolygonForkTest is Test {
   function _run(Market memory m) internal {
     vm.createSelectFork(m.fork);
     AaveDepositorNetworks.Network memory net = AaveDepositorNetworks.get(block.chainid);
+    (address owner, address guardian) = GovernanceOwners.get(block.chainid);
     AaveDepositorReceiver robot = new AaveDepositorReceiver(
       net.forwarder,
       net.roles,
       net.steward,
-      net.roleKey,
-      net.owner,
-      net.guardian
+      ROLE_KEY,
+      owner,
+      guardian
     );
 
     uint256 depositAmount = 1_000 * 10 ** _decimals(m.usdc);
