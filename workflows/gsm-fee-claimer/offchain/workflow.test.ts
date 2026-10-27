@@ -1,32 +1,15 @@
 import {describe, expect} from 'bun:test';
 import {TxStatus, getNetwork} from '@chainlink/cre-sdk';
 import {EvmMock, newTestRuntime, test} from '@chainlink/cre-sdk/test';
-import {
-  bytesToHex,
-  decodeAbiParameters,
-  decodeFunctionData,
-  hexToBytes,
-  parseAbiParameters,
-  type Address,
-  type Hex,
-} from 'viem';
+import {decodeAbiParameters, hexToBytes, parseAbiParameters, type Address, type Hex} from 'viem';
 
-import {IAaveCREReceiverABI} from '../../shared/offchain/abi/IAaveCREReceiver';
-import {MAX_WRITE_GAS} from '../../shared/offchain/checkUpkeep';
-import {
-  CHECK_UPKEEP_SELECTOR,
-  encodeCheckUpkeepResult,
-  type CallContractInput,
-} from '../../shared/offchain/testing/mocks';
+import {MAX_WRITE_GAS} from '../../shared/offchain/constants';
+import {chainSelectorOf, checkUpkeepMock} from '../../shared/offchain/testing/mocks';
 import {configSchema} from './types';
 import {createReceiverHandler, initWorkflow} from './workflow';
 
 const CHAIN_NAME = 'ethereum-mainnet';
-const CHAIN_SELECTOR = getNetwork({
-  chainFamily: 'evm',
-  chainSelectorName: CHAIN_NAME,
-  isTestnet: false,
-})!.chainSelector.selector;
+const CHAIN_SELECTOR = chainSelectorOf(CHAIN_NAME);
 
 const RECEIVER = '0x1111111111111111111111111111111111111111' as Address;
 const GSM_A = '0x2222222222222222222222222222222222222222' as Address;
@@ -44,25 +27,6 @@ const NETWORK = {
   minFees: MIN_FEES,
 };
 const RAW_NETWORK = {...NETWORK, minFees: MIN_FEES.toString()};
-
-// Mocks callContract for a single checkUpkeep call, returning the given result and
-// handing the received checkData to `onCheckData` when provided.
-function checkUpkeepMock(
-  upkeepNeeded: boolean,
-  performData: Hex = PERFORM_DATA,
-  onCheckData?: (checkData: Hex) => void,
-) {
-  return (req: CallContractInput): {data: Uint8Array} => {
-    const data = bytesToHex(req.call.data);
-    const selector = data.slice(0, 10).toLowerCase();
-    if (selector === CHECK_UPKEEP_SELECTOR) {
-      const [checkData] = decodeFunctionData({abi: IAaveCREReceiverABI, data}).args as [Hex];
-      onCheckData?.(checkData);
-      return {data: encodeCheckUpkeepResult(upkeepNeeded, performData)};
-    }
-    throw new Error(`checkUpkeepMock: unmocked selector ${selector}`);
-  };
-}
 
 const handle = createReceiverHandler(NETWORK);
 
@@ -114,7 +78,7 @@ describe('gsm-fee-claimer workflow', () => {
 
   test('returns "submit skipped" when estimateGas reverts', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = checkUpkeepMock(true);
+    evmMock.callContract = checkUpkeepMock(true, PERFORM_DATA);
     evmMock.estimateGas = () => {
       throw new Error('reverted');
     };
@@ -124,7 +88,7 @@ describe('gsm-fee-claimer workflow', () => {
 
   test('returns "submit skipped" when the estimate exceeds the write quota', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = checkUpkeepMock(true);
+    evmMock.callContract = checkUpkeepMock(true, PERFORM_DATA);
     evmMock.estimateGas = () => ({gas: MAX_WRITE_GAS + 1n});
     const runtime = newTestRuntime();
     expect(handle(runtime as never)).toBe('submit skipped');
@@ -133,7 +97,7 @@ describe('gsm-fee-claimer workflow', () => {
 
   test('submits the signed performData with the full write quota', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = checkUpkeepMock(true);
+    evmMock.callContract = checkUpkeepMock(true, PERFORM_DATA);
     evmMock.estimateGas = () => ({gas: 100_000n});
     let gasLimit: bigint | undefined;
     evmMock.writeReport = (input) => {
@@ -147,7 +111,7 @@ describe('gsm-fee-claimer workflow', () => {
 
   test('returns "submit skipped" and logs when writeReport is not SUCCESS', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = checkUpkeepMock(true);
+    evmMock.callContract = checkUpkeepMock(true, PERFORM_DATA);
     evmMock.estimateGas = () => ({gas: 100_000n});
     evmMock.writeReport = () => ({
       txStatus: TxStatus.REVERTED,
