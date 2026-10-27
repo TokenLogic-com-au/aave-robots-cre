@@ -9,11 +9,12 @@ affected reserves. Replaces BGD Labs' `ProofOfReserveKeeper`. Avalanche only.
 ```
 proof-of-reserve/
 ├── src/
-│   ├── ProofOfReserveReceiver.sol        # the robot — inherits IAaveCREReceiver, permissionless onReport
+│   ├── ProofOfReserveReceiver.sol        # the robot — inherits WorkflowsBase, permissionless onReport
 │   └── IProofOfReserveReceiver.sol       # robot interface + minimal executor interface
 ├── tests/
 │   ├── ProofOfReserveReceiver.t.sol      # unit tests (vm.mockCall against the executor)
 │   ├── ProofOfReserveReceiver.fork.t.sol # fork tests against the live Avalanche executors
+│   ├── DeployProofOfReserveReceiver.t.sol # deploy script owners and executors
 │   └── helpers/
 │       └── ProofOfReserveReceiverHarness.sol
 ├── scripts/
@@ -23,7 +24,7 @@ proof-of-reserve/
 
 ## On-chain behavior
 
-`ProofOfReserveReceiver` implements [`IAaveCREReceiver`](../shared/src/IAaveCREReceiver.sol):
+`ProofOfReserveReceiver` inherits [`WorkflowsBase`](../shared/src/WorkflowsBase.sol) and implements its `_checkUpkeep` / `_onReport`:
 
 - `checkUpkeep(executor) → (needed, executor)` — read-only probe. Returns true when
   the executor is enabled for automation, not all of its reserves are backed
@@ -49,7 +50,9 @@ is required.
 - `disableExecutor(executor)` — owner or guardian (emergency off-switch). Reverts
   `ExecutorStatusUnchanged` if not enabled.
 - Both emit `ExecutorStatusUpdated(executor, enabled)`.
-- The contract is `Rescuable`; the owner is the rescue guardian.
+- From `WorkflowsBase`: the global switch (`disableAutomation()` by the owner or
+  guardian, `enableAutomation()` by the owner) turning `checkUpkeep` off and making
+  `onReport` revert, and `Rescuable` with the owner as rescue guardian.
 
 ## Configuration
 
@@ -76,15 +79,16 @@ executor is currently backed.
 
 `workflow.test.ts` mocks the cre-sdk EVM client via `EvmMock` and drives
 `createExecutorHandler` end-to-end for each branch. Generic helpers
-(`encodeCheckUpkeepResult`, `CHECK_UPKEEP_SELECTOR`) live in
+(`checkUpkeepMock`, `chainSelectorOf`) live in
 [`../shared/offchain/testing/mocks.ts`](../shared/offchain/testing/mocks.ts).
 Requires `bun` on PATH.
 
 ## Deployment
 
-`ProofOfReserveReceiver` deploys stand-alone. `DeployProofOfReserveReceiver` uses
-`GovernanceV3Avalanche.EXECUTOR_LVL_1` / `GOVERNANCE_GUARDIAN` as owner / guardian
-and enables `AaveV2Avalanche.PROOF_OF_RESERVE` / `AaveV3Avalanche.PROOF_OF_RESERVE`
+`ProofOfReserveReceiver` deploys stand-alone, on Avalanche only (the script reverts
+elsewhere). `DeployProofOfReserveReceiver` takes owner / guardian from
+[`GovernanceOwners`](../shared/scripts/GovernanceOwners.sol) (Avalanche Governance V3
+executor and guardian) and enables `AaveV2Avalanche.PROOF_OF_RESERVE` / `AaveV3Avalanche.PROOF_OF_RESERVE`
 in the constructor.
 
 ```bash
