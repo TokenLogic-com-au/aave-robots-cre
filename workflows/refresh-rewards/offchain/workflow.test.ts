@@ -1,42 +1,25 @@
 import {describe, expect} from 'bun:test';
-import {TxStatus, getNetwork} from '@chainlink/cre-sdk';
+import {TxStatus} from '@chainlink/cre-sdk';
 import {EvmMock, newTestRuntime, test} from '@chainlink/cre-sdk/test';
-import {bytesToHex, decodeFunctionData, hexToBytes, type Hex} from 'viem';
+import {bytesToHex, hexToBytes, type Hex} from 'viem';
 
-import {
-  CHECK_UPKEEP_SELECTOR,
-  encodeCheckUpkeepResult,
-  type CallContractInput,
-} from '../../shared/offchain/testing/mocks';
-import {IAaveCREReceiverABI} from '../../shared/offchain/abi/IAaveCREReceiver';
+import {EVERY_10_MINUTES} from '../../shared/offchain/constants';
+import {chainSelectorOf, checkUpkeepMock} from '../../shared/offchain/testing/mocks';
 import {configSchema, createFactoryHandler, encodeCheckData, initWorkflow} from './workflow';
 import productionConfig from './config.production.json';
 
 const CHAIN_NAME = 'ethereum-mainnet';
-const CHAIN_SELECTOR = getNetwork({
-  chainFamily: 'evm',
-  chainSelectorName: CHAIN_NAME,
-  isTestnet: false,
-})!.chainSelector.selector;
+const CHAIN_SELECTOR = chainSelectorOf(CHAIN_NAME);
 
 const RECEIVER = '0x1111111111111111111111111111111111111111' as Hex;
 const FACTORY = '0x2222222222222222222222222222222222222222' as Hex;
 const TX_HASH = ('0xab' + 'cd'.repeat(31)) as Hex;
 // The workflow treats performData as opaque (it only signs it), so any non-empty payload works.
 const PERFORM_DATA = '0xdeadbeef' as Hex;
+// PerWorkflow.TriggerSubscriptionLimit
+const CRE_MAX_TRIGGERS = 10;
 
 const NETWORK = {chainName: CHAIN_NAME, isTestnet: false, receiver: RECEIVER, factories: [FACTORY]};
-
-// Mock `callContract` for a single `checkUpkeep` call, returning the given result.
-function checkUpkeepMock(upkeepNeeded: boolean, performData: Hex = PERFORM_DATA) {
-  return (req: CallContractInput): {data: Uint8Array} => {
-    const selector = bytesToHex(req.call.data).slice(0, 10).toLowerCase();
-    if (selector === CHECK_UPKEEP_SELECTOR) {
-      return {data: encodeCheckUpkeepResult(upkeepNeeded, performData)};
-    }
-    throw new Error(`checkUpkeepMock: unmocked selector ${selector}`);
-  };
-}
 
 const handle = createFactoryHandler(NETWORK, FACTORY);
 
@@ -51,14 +34,7 @@ describe('refresh-rewards workflow', () => {
   test('sends only the factory as checkData', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     let checkData: Hex | undefined;
-    evmMock.callContract = (req: CallContractInput) => {
-      const {args} = decodeFunctionData({
-        abi: IAaveCREReceiverABI,
-        data: bytesToHex(req.call.data),
-      });
-      checkData = args?.[0] as Hex;
-      return {data: encodeCheckUpkeepResult(false, '0x')};
-    };
+    evmMock.callContract = checkUpkeepMock(false, '0x', (data) => (checkData = data));
 
     handle(newTestRuntime() as never);
     expect(checkData).toBe(encodeCheckData(FACTORY));
@@ -88,7 +64,7 @@ describe('refresh-rewards workflow', () => {
 
   test('returns "submit skipped" when estimateGas reverts', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = checkUpkeepMock(true);
+    evmMock.callContract = checkUpkeepMock(true, PERFORM_DATA);
     evmMock.estimateGas = () => {
       throw new Error('reverted');
     };
@@ -104,7 +80,7 @@ describe('refresh-rewards workflow', () => {
 
   test('submits the report and returns the tx hash on success', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = checkUpkeepMock(true);
+    evmMock.callContract = checkUpkeepMock(true, PERFORM_DATA);
     evmMock.estimateGas = () => ({gas: 100_000n});
     let receiver: Hex | undefined;
     evmMock.writeReport = (input) => {
@@ -118,7 +94,7 @@ describe('refresh-rewards workflow', () => {
 
   test('returns "submit skipped" and logs when writeReport is not SUCCESS', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = checkUpkeepMock(true);
+    evmMock.callContract = checkUpkeepMock(true, PERFORM_DATA);
     evmMock.estimateGas = () => ({gas: 100_000n});
     evmMock.writeReport = () => ({
       txStatus: TxStatus.REVERTED,
@@ -141,7 +117,7 @@ describe('refresh-rewards workflow', () => {
 describe('initWorkflow', () => {
   test('creates one handler per factory', () => {
     const handlers = initWorkflow({
-      schedule: '* * * * *',
+      schedule: EVERY_10_MINUTES,
       evms: [
         {
           chainName: CHAIN_NAME,
@@ -154,16 +130,15 @@ describe('initWorkflow', () => {
     expect(handlers.length).toBe(2);
   });
 
-  // CRE caps triggers per workflow at 10 (PerWorkflow.TriggerSubscriptionLimit).
   test('production config stays within the CRE trigger limit', () => {
     const config = configSchema.parse(productionConfig);
     const evms = config.evms.map((net) => ({...net, receiver: RECEIVER}));
-    expect(initWorkflow({...config, evms}).length).toBeLessThanOrEqual(10);
+    expect(initWorkflow({...config, evms}).length).toBeLessThanOrEqual(CRE_MAX_TRIGGERS);
   });
 
   test('skips networks with empty receiver', () => {
     const handlers = initWorkflow({
-      schedule: '* * * * *',
+      schedule: EVERY_10_MINUTES,
       evms: [{chainName: CHAIN_NAME, isTestnet: false, receiver: '', factories: [FACTORY]}],
     });
     expect(handlers.length).toBe(0);
@@ -171,7 +146,7 @@ describe('initWorkflow', () => {
 
   test('sums handlers across networks', () => {
     const handlers = initWorkflow({
-      schedule: '* * * * *',
+      schedule: EVERY_10_MINUTES,
       evms: [
         {
           chainName: CHAIN_NAME,
