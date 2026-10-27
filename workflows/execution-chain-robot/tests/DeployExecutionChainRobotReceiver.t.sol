@@ -5,6 +5,8 @@ import {Test} from 'forge-std/Test.sol';
 
 import {ChainIds} from 'solidity-utils/contracts/utils/ChainHelpers.sol';
 
+import {GovernanceOwners} from '../../shared/scripts/GovernanceOwners.sol';
+
 import {ExecutionChainRobotReceiver} from '../src/ExecutionChainRobotReceiver.sol';
 import {DeployExecutionChainRobotReceiver} from '../scripts/DeployExecutionChainRobotReceiver.s.sol';
 
@@ -35,7 +37,7 @@ contract DeployExecutionChainRobotReceiverTest is Test {
     }
   }
 
-  /// Every supported chain has a controller, owner and guardian; only Ethereum is gas capped.
+  /// Every supported chain has a controller; only Ethereum is gas capped.
   function test_getDeployConfig_perChain() public view {
     uint256[] memory supported = _supportedChainIds();
     for (uint256 i = 0; i < supported.length; i++) {
@@ -44,8 +46,6 @@ contract DeployExecutionChainRobotReceiverTest is Test {
       );
       string memory chain = vm.toString(supported[i]);
       assertTrue(config.payloadsController != address(0), string.concat(chain, ': no controller'));
-      assertTrue(config.owner != address(0), string.concat(chain, ': owner is zero'));
-      assertTrue(config.guardian != address(0), string.concat(chain, ': guardian is zero'));
 
       bool capped = supported[i] == ChainIds.MAINNET;
       assertEq(
@@ -72,13 +72,15 @@ contract DeployExecutionChainRobotReceiverTest is Test {
       ChainIds.MAINNET
     );
 
+    (address owner, address guardian) = GovernanceOwners.get(ChainIds.MAINNET);
+
     ExecutionChainRobotReceiver receiver = ExecutionChainRobotReceiver(script.run());
 
     assertEq(address(receiver.PAYLOADS_CONTROLLER()), config.payloadsController, 'controller');
     assertEq(receiver.GAS_PRICE_ORACLE(), config.gasPriceOracle, 'gas price oracle mismatch');
     assertEq(receiver.getMaxGasPrice(), config.maxGasPrice, 'max gas price mismatch');
-    assertEq(receiver.owner(), config.owner, 'owner mismatch');
-    assertEq(receiver.guardian(), config.guardian, 'guardian mismatch');
+    assertEq(receiver.owner(), owner, 'owner mismatch');
+    assertEq(receiver.guardian(), guardian, 'guardian mismatch');
   }
 
   /// In `config.production.json` order.
