@@ -11,7 +11,7 @@ on Avalanche, Polygon, Optimism, Arbitrum, Base and BNB.
 ```
 cap-agent/
 ├── src/
-│   ├── CapAgentReceiver.sol         # the robot — inherits IAaveCREReceiver, permissionless onReport
+│   ├── CapAgentReceiver.sol         # the robot — inherits WorkflowsBase, permissionless onReport
 │   └── ICapAgentReceiver.sol        # robot interface + minimal AgentHub interface
 ├── tests/
 │   ├── CapAgentReceiver.t.sol       # unit tests (vm.mockCall against the AgentHub)
@@ -27,7 +27,8 @@ cap-agent/
 
 ## On-chain behavior
 
-`CapAgentReceiver` implements [`IAaveCREReceiver`](../shared/src/IAaveCREReceiver.sol):
+`CapAgentReceiver` inherits [`WorkflowsBase`](../shared/src/WorkflowsBase.sol) and implements
+its `_checkUpkeep` / `_onReport`:
 
 - `checkUpkeep(_) → (needed, ActionData[])` — read-only probe. Calls `AGENT_HUB.check`
   for each enabled agent `execute` would act on (a permissioned agent only if this receiver
@@ -55,7 +56,8 @@ trigger its valid injections through `onReport`, as with BGD's `performUpkeep`.
 - `disableAgent(agentId)` — owner or guardian (emergency off-switch). Reverts
   `AgentStatusUnchanged` if not enabled.
 - Both emit `AgentStatusUpdated(agentId, enabled)`.
-- The contract is `Rescuable`; the owner is the rescue guardian.
+- Owner / guardian access control, `Rescuable` (owner as rescue guardian), ERC165 and the
+  global `enableAutomation()` / `disableAutomation()` switch come from `WorkflowsBase`.
 
 ## Governance prerequisites
 
@@ -88,14 +90,15 @@ disabled on the robot, a permissioned agent, an agent without `RISK_ADMIN` next 
 it, and a malformed (33-byte) update; `CapAgentDeployScriptForkTest` runs the deploy script
 on every covered chain.
 
-`workflow.test.ts` runs `createReceiverHandler` against a mocked cre-sdk EVM client
-(`EvmMock`) for each branch. Requires `bun` on PATH.
+`workflow.test.ts` runs the workflow handler against a mocked cre-sdk EVM client
+(`EvmMock`). Requires `bun` on PATH.
 
 ## Deployment
 
 `DeployCapAgentReceiver` picks the config from `block.chainid` and reverts on any other
-chain: the chain's `AGENT_HUB`, its `GovernanceV3<Chain>.EXECUTOR_LVL_1` /
-`GOVERNANCE_GUARDIAN` as owner / guardian, and the agents above.
+chain: the chain's `AGENT_HUB`, the agents above, and the owner / guardian from
+[`GovernanceOwners`](../shared/scripts/GovernanceOwners.sol) (`EXECUTOR_LVL_1` /
+`GOVERNANCE_GUARDIAN`).
 
 ```bash
 # from repo root, with ACCOUNT_NAME=<your-keystore-name> in .env
