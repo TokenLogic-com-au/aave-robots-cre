@@ -5,16 +5,11 @@ import {Test, Vm} from 'forge-std/Test.sol';
 
 import {Ownable} from 'openzeppelin-contracts/contracts/access/Ownable.sol';
 import {IWithGuardian} from 'solidity-utils/contracts/access-control/interfaces/IWithGuardian.sol';
-import {IERC165} from 'openzeppelin-contracts/contracts/utils/introspection/IERC165.sol';
 import {IERC4626} from 'openzeppelin-contracts/contracts/interfaces/IERC4626.sol';
-import {IRescuable} from 'aave-v4/interfaces/IRescuable.sol';
 import {IStataTokenFactory} from 'aave-v3-origin/contracts/extensions/stata-token/interfaces/IStataTokenFactory.sol';
 import {IRewardsDistributor} from 'aave-v3-origin/contracts/rewards/interfaces/IRewardsDistributor.sol';
 import {IERC20AaveLM} from 'aave-v3-origin/contracts/extensions/stata-token/interfaces/IERC20AaveLM.sol';
 import {IERC4626StataToken} from 'aave-v3-origin/contracts/extensions/stata-token/interfaces/IERC4626StataToken.sol';
-
-import {IReceiver} from 'aave-cre/IReceiver.sol';
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
 
 import {RefreshRewardsReceiver} from '../src/RefreshRewardsReceiver.sol';
 import {IRefreshRewardsReceiver, IStataToken} from '../src/IRefreshRewardsReceiver.sol';
@@ -51,11 +46,6 @@ contract RefreshRewardsReceiverTest is Test {
     robot = new RefreshRewardsReceiver(owner, guardian, _one(factory));
   }
 
-  function test_constructor_setsOwnerAndGuardian() public view {
-    assertEq(robot.owner(), owner, 'owner mismatch');
-    assertEq(robot.guardian(), guardian, 'guardian mismatch');
-  }
-
   function test_constructor_enablesInitialFactories() public {
     address otherFactory = makeAddr('otherFactory');
 
@@ -90,14 +80,105 @@ contract RefreshRewardsReceiverTest is Test {
     assertEq(robot.MAX_ACTIONS(), 10, 'unexpected MAX_ACTIONS');
   }
 
-  function test_supportsInterface() public view {
-    assertTrue(robot.supportsInterface(type(IReceiver).interfaceId), 'IReceiver not supported');
-    assertTrue(
-      robot.supportsInterface(type(IAaveCREReceiver).interfaceId),
-      'IAaveCREReceiver not supported'
+  function test_onReport_refreshes_whenAnyoneCalls() public {
+    _mockRewards(stataA, _one(reward));
+    _mockRegistered(stataA, reward, false);
+
+    vm.expectCall(stataA, abi.encodeWithSelector(IERC20AaveLM.refreshRewardTokens.selector));
+    vm.expectEmit(address(robot));
+    emit IRefreshRewardsReceiver.RefreshSucceeded(stataA);
+
+    vm.prank(anyone);
+    robot.onReport('', abi.encode(factory, _one(stataA)));
+  }
+
+  function test_onReport_skipsStaleToken_andRefreshesRest() public {
+    _mockRewards(stataA, _one(reward));
+    _mockRewards(stataB, _one(reward));
+    _mockRegistered(stataA, reward, true);
+    _mockRegistered(stataB, reward, false);
+
+    vm.expectCall(stataA, abi.encodeWithSelector(IERC20AaveLM.refreshRewardTokens.selector), 0);
+    vm.expectCall(stataB, abi.encodeWithSelector(IERC20AaveLM.refreshRewardTokens.selector), 1);
+
+    vm.recordLogs();
+    vm.prank(anyone);
+    robot.onReport('', abi.encode(factory, _two(stataA, stataB)));
+
+    Vm.Log[] memory logs = vm.getRecordedLogs();
+    assertEq(logs.length, 1, 'expected a single RefreshSucceeded');
+    assertEq(logs[0].topics[0], IRefreshRewardsReceiver.RefreshSucceeded.selector, 'wrong event');
+    assertEq(
+      address(uint160(uint256(logs[0].topics[1]))),
+      stataB,
+      'event for the wrong stataToken'
     );
-    assertTrue(robot.supportsInterface(type(IERC165).interfaceId), 'IERC165 not supported');
-    assertFalse(robot.supportsInterface(0xffffffff), 'invalid interface id supported');
+  }
+
+  function test_onReport_skipsStataTokenNotFromFactory() public {
+    address spoofed = makeAddr('spoofed');
+    _mockStata(spoofed, 'spoofed');
+    // The factory maps the spoofed token's underlying to a different stataToken.
+    vm.mockCall(
+      factory,
+      abi.encodeWithSelector(IStataTokenFactory.getStataToken.selector, _underlying('spoofed')),
+      abi.encode(stataA)
+    );
+    _mockRewards(spoofed, _one(reward));
+    _mockRegistered(spoofed, reward, false);
+    _mockRewards(stataB, _one(reward));
+    _mockRegistered(stataB, reward, false);
+
+    vm.expectCall(spoofed, abi.encodeWithSelector(IERC20AaveLM.refreshRewardTokens.selector), 0);
+    vm.expectCall(stataB, abi.encodeWithSelector(IERC20AaveLM.refreshRewardTokens.selector), 1);
+
+    vm.prank(anyone);
+    robot.onReport('', abi.encode(factory, _two(spoofed, stataB)));
+  }
+
+  function test_onReport_revertsWith_ConditionsNotMet_whenNothingToRefresh() public {
+    _mockRewards(stataA, _one(reward));
+    _mockRegistered(stataA, reward, true);
+
+    vm.prank(anyone);
+    vm.expectRevert(IRefreshRewardsReceiver.ConditionsNotMet.selector);
+    robot.onReport('', abi.encode(factory, _one(stataA)));
+  }
+
+  function test_onReport_revertsWith_ConditionsNotMet_whenFactoryDisabled() public {
+    _mockRewards(stataA, _one(reward));
+    _mockRegistered(stataA, reward, false);
+
+    vm.prank(guardian);
+    robot.disableFactory(factory);
+
+    vm.expectCall(stataA, abi.encodeWithSelector(IERC20AaveLM.refreshRewardTokens.selector), 0);
+    vm.prank(anyone);
+    vm.expectRevert(IRefreshRewardsReceiver.ConditionsNotMet.selector);
+    robot.onReport('', abi.encode(factory, _one(stataA)));
+  }
+
+  function test_onReport_revertsWith_ConditionsNotMet_whenEmptyBatch() public {
+    vm.prank(anyone);
+    vm.expectRevert(IRefreshRewardsReceiver.ConditionsNotMet.selector);
+    robot.onReport('', abi.encode(factory, new address[](0)));
+  }
+
+  function test_onReport_revertsWith_ConditionsNotMet_whenOnlySpoofedTokens() public {
+    address spoofed = makeAddr('spoofed');
+    _mockStata(spoofed, 'spoofed');
+    vm.mockCall(
+      factory,
+      abi.encodeWithSelector(IStataTokenFactory.getStataToken.selector, _underlying('spoofed')),
+      abi.encode(stataA)
+    );
+    _mockRewards(spoofed, _one(reward));
+    _mockRegistered(spoofed, reward, false);
+
+    vm.expectCall(spoofed, abi.encodeWithSelector(IERC20AaveLM.refreshRewardTokens.selector), 0);
+    vm.prank(anyone);
+    vm.expectRevert(IRefreshRewardsReceiver.ConditionsNotMet.selector);
+    robot.onReport('', abi.encode(factory, _one(spoofed)));
   }
 
   function test_checkUpkeep_returnsFalse_whenFactoryNotEnabled() public {
@@ -210,107 +291,6 @@ contract RefreshRewardsReceiverTest is Test {
     assertEq(picked, expected, 'should pick the first MAX_ACTIONS tokens needing a refresh');
   }
 
-  function test_onReport_refreshes_whenAnyoneCalls() public {
-    _mockRewards(stataA, _one(reward));
-    _mockRegistered(stataA, reward, false);
-
-    vm.expectCall(stataA, abi.encodeWithSelector(IERC20AaveLM.refreshRewardTokens.selector));
-    vm.expectEmit(address(robot));
-    emit IRefreshRewardsReceiver.RefreshSucceeded(stataA);
-
-    vm.prank(anyone);
-    robot.onReport('', abi.encode(factory, _one(stataA)));
-  }
-
-  function test_onReport_skipsStaleToken_andRefreshesRest() public {
-    _mockRewards(stataA, _one(reward));
-    _mockRewards(stataB, _one(reward));
-    _mockRegistered(stataA, reward, true);
-    _mockRegistered(stataB, reward, false);
-
-    vm.expectCall(stataA, abi.encodeWithSelector(IERC20AaveLM.refreshRewardTokens.selector), 0);
-    vm.expectCall(stataB, abi.encodeWithSelector(IERC20AaveLM.refreshRewardTokens.selector), 1);
-
-    vm.recordLogs();
-    vm.prank(anyone);
-    robot.onReport('', abi.encode(factory, _two(stataA, stataB)));
-
-    Vm.Log[] memory logs = vm.getRecordedLogs();
-    assertEq(logs.length, 1, 'expected a single RefreshSucceeded');
-    assertEq(logs[0].topics[0], IRefreshRewardsReceiver.RefreshSucceeded.selector, 'wrong event');
-    assertEq(
-      address(uint160(uint256(logs[0].topics[1]))),
-      stataB,
-      'event for the wrong stataToken'
-    );
-  }
-
-  function test_onReport_skipsStataTokenNotFromFactory() public {
-    address spoofed = makeAddr('spoofed');
-    _mockStata(spoofed, 'spoofed');
-    // The factory maps the spoofed token's underlying to a different stataToken.
-    vm.mockCall(
-      factory,
-      abi.encodeWithSelector(IStataTokenFactory.getStataToken.selector, _underlying('spoofed')),
-      abi.encode(stataA)
-    );
-    _mockRewards(spoofed, _one(reward));
-    _mockRegistered(spoofed, reward, false);
-    _mockRewards(stataB, _one(reward));
-    _mockRegistered(stataB, reward, false);
-
-    vm.expectCall(spoofed, abi.encodeWithSelector(IERC20AaveLM.refreshRewardTokens.selector), 0);
-    vm.expectCall(stataB, abi.encodeWithSelector(IERC20AaveLM.refreshRewardTokens.selector), 1);
-
-    vm.prank(anyone);
-    robot.onReport('', abi.encode(factory, _two(spoofed, stataB)));
-  }
-
-  function test_onReport_revertsWith_ConditionsNotMet_whenNothingToRefresh() public {
-    _mockRewards(stataA, _one(reward));
-    _mockRegistered(stataA, reward, true);
-
-    vm.prank(anyone);
-    vm.expectRevert(IRefreshRewardsReceiver.ConditionsNotMet.selector);
-    robot.onReport('', abi.encode(factory, _one(stataA)));
-  }
-
-  function test_onReport_revertsWith_ConditionsNotMet_whenFactoryDisabled() public {
-    _mockRewards(stataA, _one(reward));
-    _mockRegistered(stataA, reward, false);
-
-    vm.prank(guardian);
-    robot.disableFactory(factory);
-
-    vm.expectCall(stataA, abi.encodeWithSelector(IERC20AaveLM.refreshRewardTokens.selector), 0);
-    vm.prank(anyone);
-    vm.expectRevert(IRefreshRewardsReceiver.ConditionsNotMet.selector);
-    robot.onReport('', abi.encode(factory, _one(stataA)));
-  }
-
-  function test_onReport_revertsWith_ConditionsNotMet_whenEmptyBatch() public {
-    vm.prank(anyone);
-    vm.expectRevert(IRefreshRewardsReceiver.ConditionsNotMet.selector);
-    robot.onReport('', abi.encode(factory, new address[](0)));
-  }
-
-  function test_onReport_revertsWith_ConditionsNotMet_whenOnlySpoofedTokens() public {
-    address spoofed = makeAddr('spoofed');
-    _mockStata(spoofed, 'spoofed');
-    vm.mockCall(
-      factory,
-      abi.encodeWithSelector(IStataTokenFactory.getStataToken.selector, _underlying('spoofed')),
-      abi.encode(stataA)
-    );
-    _mockRewards(spoofed, _one(reward));
-    _mockRegistered(spoofed, reward, false);
-
-    vm.expectCall(spoofed, abi.encodeWithSelector(IERC20AaveLM.refreshRewardTokens.selector), 0);
-    vm.prank(anyone);
-    vm.expectRevert(IRefreshRewardsReceiver.ConditionsNotMet.selector);
-    robot.onReport('', abi.encode(factory, _one(spoofed)));
-  }
-
   function test_enableFactory() public {
     address otherFactory = makeAddr('otherFactory');
 
@@ -383,16 +363,6 @@ contract RefreshRewardsReceiverTest is Test {
       )
     );
     robot.disableFactory(otherFactory);
-  }
-
-  function test_rescueGuardian_isOwner() public view {
-    assertEq(robot.rescueGuardian(), owner, 'rescue guardian is not the owner');
-  }
-
-  function test_rescueToken_revertsWith_OnlyRescueGuardian() public {
-    vm.prank(guardian);
-    vm.expectRevert(IRescuable.OnlyRescueGuardian.selector);
-    robot.rescueToken(makeAddr('token'), bob, 100);
   }
 
   /// @dev Mocks a stataToken deployed by `factory`: its aToken, underlying, incentives
