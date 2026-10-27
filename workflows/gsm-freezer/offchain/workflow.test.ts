@@ -1,22 +1,18 @@
 import {describe, expect} from 'bun:test';
-import {TxStatus, getNetwork} from '@chainlink/cre-sdk';
+import {TxStatus} from '@chainlink/cre-sdk';
 import {EvmMock, newTestRuntime, test} from '@chainlink/cre-sdk/test';
-import {bytesToHex, decodeFunctionData, hexToBytes, type Hex} from 'viem';
+import {bytesToHex, hexToBytes, type Hex} from 'viem';
 
 import {
-  CHECK_UPKEEP_SELECTOR,
+  chainSelectorOf,
+  checkUpkeepMock,
   encodeCheckUpkeepResult,
   type CallContractInput,
 } from '../../shared/offchain/testing/mocks';
-import {IAaveCREReceiverABI} from '../../shared/offchain/abi/IAaveCREReceiver';
 import {createReceiverHandler, initWorkflow} from './workflow';
 
 const CHAIN_NAME = 'ethereum-mainnet';
-const CHAIN_SELECTOR = getNetwork({
-  chainFamily: 'evm',
-  chainSelectorName: CHAIN_NAME,
-  isTestnet: false,
-})!.chainSelector.selector;
+const CHAIN_SELECTOR = chainSelectorOf(CHAIN_NAME);
 
 const RECEIVER = '0x1111111111111111111111111111111111111111' as Hex;
 const TX_HASH = ('0xab' + 'cd'.repeat(31)) as Hex;
@@ -25,23 +21,12 @@ const PERFORM_DATA = '0xdeadbeef' as Hex;
 
 const NETWORK = {chainName: CHAIN_NAME, isTestnet: false, receiver: RECEIVER};
 
-// Mocks callContract for a single checkUpkeep call, returning the given result.
-function checkUpkeepMock(upkeepNeeded: boolean, performData: Hex = PERFORM_DATA) {
-  return (req: CallContractInput): {data: Uint8Array} => {
-    const selector = bytesToHex(req.call.data).slice(0, 10).toLowerCase();
-    if (selector === CHECK_UPKEEP_SELECTOR) {
-      return {data: encodeCheckUpkeepResult(upkeepNeeded, performData)};
-    }
-    throw new Error(`checkUpkeepMock: unmocked selector ${selector}`);
-  };
-}
-
 const handle = createReceiverHandler(NETWORK);
 
 describe('gsm-freezer workflow', () => {
   test('returns "No action needed" when checkUpkeep is false', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = checkUpkeepMock(false, '0x');
+    evmMock.callContract = checkUpkeepMock(false);
 
     expect(handle(newTestRuntime() as never)).toBe('No action needed');
   });
@@ -70,7 +55,7 @@ describe('gsm-freezer workflow', () => {
 
   test('returns "submit skipped" when estimateGas reverts', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = checkUpkeepMock(true);
+    evmMock.callContract = checkUpkeepMock(true, PERFORM_DATA);
     evmMock.estimateGas = () => {
       throw new Error('reverted');
     };
@@ -80,7 +65,7 @@ describe('gsm-freezer workflow', () => {
 
   test('submits the report and returns the tx hash on success', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = checkUpkeepMock(true);
+    evmMock.callContract = checkUpkeepMock(true, PERFORM_DATA);
     evmMock.estimateGas = () => ({gas: 100_000n});
     evmMock.writeReport = () => ({txStatus: TxStatus.SUCCESS, txHash: hexToBytes(TX_HASH)});
 
@@ -89,7 +74,7 @@ describe('gsm-freezer workflow', () => {
 
   test('returns "submit skipped" and logs when writeReport is not SUCCESS', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = checkUpkeepMock(true);
+    evmMock.callContract = checkUpkeepMock(true, PERFORM_DATA);
     evmMock.estimateGas = () => ({gas: 100_000n});
     evmMock.writeReport = () => ({
       txStatus: TxStatus.REVERTED,
@@ -113,14 +98,10 @@ describe('checkUpkeep call', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     let to: Hex | undefined;
     let checkData: Hex | undefined;
+    const mock = checkUpkeepMock(false, '0x', (data) => (checkData = data));
     evmMock.callContract = (req: CallContractInput) => {
       to = bytesToHex(req.call.to);
-      const {args} = decodeFunctionData({
-        abi: IAaveCREReceiverABI,
-        data: bytesToHex(req.call.data),
-      });
-      checkData = args?.[0] as Hex;
-      return {data: encodeCheckUpkeepResult(false, '0x')};
+      return mock(req);
     };
 
     handle(newTestRuntime() as never);
@@ -130,7 +111,7 @@ describe('checkUpkeep call', () => {
 
   test('returns "Processing failed" and logs when the write throws', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.callContract = checkUpkeepMock(true);
+    evmMock.callContract = checkUpkeepMock(true, PERFORM_DATA);
     evmMock.estimateGas = () => ({gas: 100_000n});
     evmMock.writeReport = () => {
       throw new Error('boom');
