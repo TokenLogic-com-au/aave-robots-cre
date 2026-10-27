@@ -8,13 +8,9 @@ import {
   type Hex,
 } from 'viem';
 
-import {
-  estimateOnReport,
-  MAX_WRITE_GAS,
-  shouldSubmit,
-  writeSignedReport,
-} from '../../shared/offchain/checkUpkeep';
-import {type Config, type EvmClient, type Result, configSchema} from './types';
+import {shouldSubmit, submitReport, type EvmClient} from '../../shared/offchain/checkUpkeep';
+import {createNetworkHandler} from '../../shared/offchain/network';
+import {type Config, type Result, configSchema} from './types';
 import {IAaveDepositorReceiver} from './abi/IAaveDepositorReceiver';
 import {fetchSupplyCaps} from './helpers/caps';
 import {parseChainConfig, toTokenSet} from './helpers/config';
@@ -86,42 +82,17 @@ function readReceiver(
   return {ok: true, value: {forwarder, expectedWorkflowId}};
 }
 
-// The estimate impersonates the forwarder with the pinned workflow id as metadata, and
-// only gates the write (revert, or batch over the quota); the write requests the full quota.
-export function submitCalls(
-  runtime: Runtime<Config>,
-  evmClient: EvmClient,
-  receiver: Address,
-  info: ReceiverInfo,
-  performData: Hex,
-  label: string,
-): string | null {
-  const estimate = estimateOnReport(runtime, evmClient, receiver, performData, label, {
-    from: info.forwarder,
-    metadata: info.expectedWorkflowId,
-  });
-  if (estimate === null) return null;
-  if (estimate > MAX_WRITE_GAS) {
-    runtime.log(
-      `[${label}] estimate ${estimate} exceeds max write gas ${MAX_WRITE_GAS} — skipping`,
-    );
-    return null;
-  }
-  return writeSignedReport(runtime, evmClient, receiver, performData, label, MAX_WRITE_GAS);
-}
-
-export const onCronTrigger = (runtime: Runtime<Config>): string => {
+function depositIdleFunds(runtime: Runtime<Config>, evmClient: EvmClient): string {
   const config = runtime.config;
   const chain = parseChainConfig(config);
   if (chain === null) {
-    runtime.log(`network not found or receiver unset: ${config.chainName}`);
-    return 'Network not found';
+    runtime.log(`receiver unset on ${config.chainName}`);
+    return 'Receiver not set';
   }
   const label = `${chain.chainName}:${chain.receiver}`;
   const ignoredTokens = toTokenSet(config.ignoredTokens);
 
   runtime.log(`[${label}] collector ${chain.collector}`);
-  const evmClient = new cre.capabilities.EVMClient(chain.chainSelector);
 
   const reservesRes = fetchReserves(runtime, evmClient, chain);
   if (!reservesRes.ok) {
@@ -184,14 +155,20 @@ export const onCronTrigger = (runtime: Runtime<Config>): string => {
   for (const chunk of chunks) {
     const performData = shouldSubmit(runtime, evmClient, chain.receiver, encodeCalls(chunk), label);
     const txHash = performData
-      ? submitCalls(runtime, evmClient, chain.receiver, infoRes.value, performData, label)
+      ? submitReport(runtime, evmClient, chain.receiver, performData, label, {
+          from: infoRes.value.forwarder,
+          metadata: infoRes.value.expectedWorkflowId,
+        })
       : null;
     if (txHash) txHashes.push(txHash);
     else skipped++;
   }
   if (txHashes.length === 0) return 'submit skipped';
   return `${txHashes.length} report(s) submitted${skipped ? `, ${skipped} skipped` : ''}, tx=${txHashes.join(',')}`;
-};
+}
+
+export const onCronTrigger = (runtime: Runtime<Config>): string =>
+  createNetworkHandler<Config>(runtime.config, runtime.config.chainName, depositIdleFunds)(runtime);
 
 export const initWorkflow = (config: Config) => {
   if (!config.receiver) return [];

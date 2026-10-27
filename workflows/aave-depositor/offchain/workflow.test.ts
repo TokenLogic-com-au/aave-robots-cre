@@ -24,7 +24,8 @@ import {
   MAX_REPORTS_PER_RUN,
   onCronTrigger,
 } from './workflow';
-import {MAX_WRITE_GAS} from '../../shared/offchain/checkUpkeep';
+import {MAX_WRITE_GAS} from '../../shared/offchain/constants';
+import {chainSelectorOf} from '../../shared/offchain/testing/mocks';
 import {
   ADDR,
   GAS_ESTIMATE,
@@ -35,11 +36,7 @@ import {
 } from './test-helpers/evmMocks';
 
 const CHAIN_NAME = 'ethereum-mainnet';
-const CHAIN_SELECTOR = getNetwork({
-  chainFamily: 'evm',
-  chainSelectorName: CHAIN_NAME,
-  isTestnet: false,
-})!.chainSelector.selector;
+const CHAIN_SELECTOR = chainSelectorOf(CHAIN_NAME);
 
 const BASE_CONFIG = {
   schedule: '0 * * * * *',

@@ -1,37 +1,25 @@
 import {z} from 'zod';
-import {getAddress, isAddress, type Address} from 'viem';
 
-export {type EvmClient} from '../../shared/offchain/checkUpkeep';
+import {addressSchema, networkSchema, uintSchema} from '../../shared/offchain/config';
 
 export const BPS = 10_000n;
 
-// Config addresses are typed by hand and viem checks EIP-55 casing strictly when
-// encoding, so normalize on parse.
-const address = z
-  .string()
-  .refine((a) => isAddress(a, {strict: false}), 'invalid address')
-  .transform((a): Address => getAddress(a.toLowerCase()));
-const uint = z.string().regex(/^\d+$/).transform(BigInt);
-
-export const configSchema = z
-  .object({
+// One workflow per chain, so the network fields sit at the top level.
+export const configSchema = networkSchema
+  .extend({
     schedule: z.string(),
-    chainName: z.string(),
-    isTestnet: z.boolean().default(false),
-    // Empty until the receiver is deployed; the workflow registers no trigger meanwhile.
-    receiver: address.or(z.literal('')),
-    dataProviderV3: address,
-    collector: address,
-    priceOracle: address,
-    corePoolV3: address,
-    primePoolV3: address.optional(),
-    dataProviderV2: address.optional(),
-    corePoolV2: address.optional(),
-    depositMinUsd: uint,
-    migrationMinUsd: uint,
-    migrationBps: uint.refine((b) => b <= BPS, 'migrationBps above 100%'),
-    ignoredTokens: z.array(address).default([]),
-    primeTokens: z.array(address).default([]),
+    dataProviderV3: addressSchema,
+    collector: addressSchema,
+    priceOracle: addressSchema,
+    corePoolV3: addressSchema,
+    primePoolV3: addressSchema.optional(),
+    dataProviderV2: addressSchema.optional(),
+    corePoolV2: addressSchema.optional(),
+    depositMinUsd: uintSchema,
+    migrationMinUsd: uintSchema,
+    migrationBps: uintSchema.refine((b) => b <= BPS, 'migrationBps above 100%'),
+    ignoredTokens: z.array(addressSchema).default([]),
+    primeTokens: z.array(addressSchema).default([]),
   })
   .refine((c) => (c.dataProviderV2 === undefined) === (c.corePoolV2 === undefined), {
     message: 'dataProviderV2 and corePoolV2 must be set together',
