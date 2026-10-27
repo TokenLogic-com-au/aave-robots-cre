@@ -5,7 +5,8 @@ import {
   type Runtime,
 } from '@chainlink/cre-sdk';
 import {encodeFunctionData, decodeFunctionResult, zeroAddress, type Hex} from 'viem';
-import type {EvmClient, Result} from '../types';
+import type {EvmClient} from '../../../shared/offchain/checkUpkeep';
+import type {Result} from '../types';
 import {IMulticall3, MULTICALL3_ADDRESS} from '../abi/IMulticall3';
 
 export type Call = {target: Hex; callData: Hex};

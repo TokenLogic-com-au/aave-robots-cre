@@ -13,8 +13,8 @@ Avalanche, Polygon.
 | File / folder          | Purpose                                                                                                                                                   |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `main.ts`              | Entry point — builds the runner from the chain config.                                                                                                    |
-| `workflow.ts`          | `initWorkflow` (one cron handler) + `onCronTrigger` + `submitCalls`.                                                                                      |
-| `types.ts`             | Zod config schema (single chain, flat).                                                                                                                   |
+| `workflow.ts`          | `initWorkflow` (one cron handler) + `onCronTrigger`.                                                                                                      |
+| `types.ts`             | Zod config schema (shared `networkSchema` extended, single chain).                                                                                        |
 | `helpers/`             | `reserves` + `caps` (batched reads), `deposits` + `migrations` (candidates), `steward` (call encoding), `multicall`, `reads`, `config`, `math`, `format`. |
 | `abi/`                 | Vendored ABIs for the Aave data providers, oracle, Steward, Multicall3.                                                                                   |
 | `config.ethereum.json` | Ethereum mainnet config. `receiver` is filled in after deploy.                                                                                            |
@@ -48,11 +48,12 @@ report batch (2 each). The workflow therefore writes at most 3 report batches pe
 ## Gas
 
 The receiver only accepts reports from the CRE forwarder, so the workflow reads
-`FORWARDER()` and `expectedWorkflowId()` from the receiver and estimates `onReport` as
-the forwarder would call it. The estimate only gates the write: a revert (role not
-granted, bad selector) or an estimate above the CRE quota skips the batch with a log.
-The write itself requests the full quota (`MAX_WRITE_GAS`, 10M), so the simulator and
-production behave the same; gas is only paid for what the transaction uses. Measured on
+`FORWARDER()` and `expectedWorkflowId()` from the receiver and passes them to the shared
+`submitReport` as `{from, metadata}`, which estimates `onReport` as the forwarder would
+call it. The estimate only gates the write: a revert (role not granted, bad selector) or
+an estimate that doesn't fit the CRE quota with the forwarder overhead skips the batch
+with a log. The write itself requests the full quota (`MAX_WRITE_GAS`), so the simulator
+and production behave the same; gas is only paid for what the transaction uses. Measured on
 a mainnet fork: ~300k per deposit, ~750k per V2 to V3 migration, hence at most 8 calls
 per report.
 

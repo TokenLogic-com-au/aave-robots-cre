@@ -1,6 +1,7 @@
 import type {Runtime} from '@chainlink/cre-sdk';
 import type {Address} from 'viem';
-import type {EvmClient, Result} from '../types';
+import type {EvmClient} from '../../../shared/offchain/checkUpkeep';
+import type {Result} from '../types';
 import type {ChainConfig} from './config';
 import {decodeOrNull, multicall} from './multicall';
 import {calls, decode, getAllReservesTokens, getAssetsPrices, type ReserveConfig} from './reads';

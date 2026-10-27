@@ -8,7 +8,8 @@ import {
   type Address,
   type Hex,
 } from 'viem';
-import type {EvmClient, Result} from '../types';
+import type {EvmClient} from '../../../shared/offchain/checkUpkeep';
+import type {Result} from '../types';
 import {IAaveDataProviderV2} from '../abi/IAaveDataProviderV2';
 import {IAaveDataProviderV3} from '../abi/IAaveDataProviderV3';
 import {IAavePriceOracle} from '../abi/IAavePriceOracle';

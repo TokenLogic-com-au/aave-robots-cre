@@ -1,10 +1,8 @@
-import {getNetwork} from '@chainlink/cre-sdk';
 import type {Address} from 'viem';
 import type {Config} from '../types';
 
 export type ChainConfig = {
   chainName: string;
-  chainSelector: bigint;
   receiver: Address;
   dataProviderV3: Address;
   collector: Address;
@@ -15,16 +13,10 @@ export type ChainConfig = {
 };
 
 export function parseChainConfig(config: Config): ChainConfig | null {
-  const network = getNetwork({
-    chainFamily: 'evm',
-    chainSelectorName: config.chainName,
-    isTestnet: config.isTestnet,
-  });
-  if (!network || config.receiver === '') return null;
+  if (config.receiver === '') return null;
   const {receiver, dataProviderV3, collector, priceOracle, corePoolV3, primePoolV3} = config;
   return {
     chainName: config.chainName,
-    chainSelector: network.chainSelector.selector,
     receiver,
     dataProviderV3,
     collector,
