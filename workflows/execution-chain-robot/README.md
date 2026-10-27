@@ -13,7 +13,7 @@ entry and an RPC.
 ```
 execution-chain-robot/
 ├── src/
-│   ├── ExecutionChainRobotReceiver.sol         # the robot — inherits IAaveCREReceiver, permissionless onReport
+│   ├── ExecutionChainRobotReceiver.sol         # the robot — GasCappedWorkflowsBase + IdDenylist, permissionless onReport
 │   └── IExecutionChainRobotReceiver.sol        # robot interface
 ├── tests/
 │   ├── ExecutionChainRobotReceiver.t.sol       # unit tests (vm.mockCall against the PayloadsController / gas feed)
@@ -28,18 +28,22 @@ execution-chain-robot/
 
 ## On-chain behavior
 
-`ExecutionChainRobotReceiver` implements [`IAaveCREReceiver`](../shared/src/IAaveCREReceiver.sol):
+`ExecutionChainRobotReceiver` inherits [`GasCappedWorkflowsBase`](../shared/src/GasCappedWorkflowsBase.sol)
+and [`IdDenylist`](../shared/src/IdDenylist.sol), and implements `_checkUpkeep` / `_onReport`:
 
 - `checkUpkeep(_) → (needed, uint40[] payloadIds)` — read-only probe. Returns false while
-  the gas price is above the cap. Otherwise walks back from the latest payload collecting
-  executable ones (`Queued`, not expired and past `queuedAt + delay`, as `executePayload`
-  requires), oldest first, up to `MAX_ACTIONS` (5). It stops after `MAX_SKIP` + 1 (21)
-  consecutive non-executable payloads (an executable one resets the count) or
+  automation is disabled or the gas price is above the cap. Otherwise walks back from the
+  latest payload collecting executable ones (`Queued`, not expired and past
+  `queuedAt + delay`, as `executePayload` requires), oldest first, up to `MAX_ACTIONS` (5). It
+  stops after `MAX_SKIP` + 1 (21) consecutive non-executable payloads (queued in their
+  timelock, executed, cancelled or expired; an executable one resets the count) or
   `MAX_SCANNED_PAYLOADS` (100) scanned. Disabled and `Created` payloads aren't counted, and
   each state read gets at most `MAX_STATE_READ_GAS` (150k).
 - `onReport(metadata, uint40[] payloadIds)` — calls `PAYLOADS_CONTROLLER.executePayload` for
-  each payload still executable and not disabled, emitting `ActionSucceeded(id)`. Reverts
-  `NoActionCanBePerformed` if none was executed.
+  each payload in the report still executable and not disabled, in report order, emitting
+  `ActionSucceeded(id)`. Reverts `NoActionCanBePerformed` if none was executed, and
+  `AutomationIsDisabled` while the robot is disabled. It executes exactly the ids it is given,
+  so a caller can split a batch across reports.
 
 `onReport` is **permissionless**: `metadata` and `msg.sender` are ignored. `executePayload`
 is permissionless itself and only runs payloads governance queued. No on-chain role is
@@ -66,27 +70,29 @@ check it. Other chains have no oracle and no cap.
 - The workflow skips payloads too large for the CRE write gas quota; those need a manual
   `executePayload`.
 - `disableAutomation` / `setMaxGasPrice` are also open to the guardian, setters revert when
-  nothing changes, and `onReport` skips disabled payloads.
+  nothing changes, `onReport` skips disabled payloads, and the whole robot can be switched
+  off.
 
 ### State and access control
 
-- `_disabled[id]` — payloads excluded from automation. Every payload is covered by default,
-  since governance keeps creating them; this is for the exception (e.g. one that keeps
-  reverting).
-- `disableAutomation(id)` — owner or guardian. `enableAutomation(id)` — owner-only. Both
-  revert `AutomationStatusUnchanged` if the status wouldn't change and emit
-  `AutomationDisabled(id, disabled)`.
+Owner / guardian access control, the global switch, the gas cap and the per-payload denylist
+come from the shared base (see the [root README](../../README.md)):
+
+- `disableAutomation()` (owner or guardian) / `enableAutomation()` (owner) — stops / resumes
+  the whole robot.
+- `disableAutomation(id)` (owner or guardian) / `enableAutomation(id)` (owner) — excludes a
+  single payload, e.g. one that keeps reverting. Every payload is covered by default, since
+  governance keeps creating them.
 - `setMaxGasPrice(maxGasPrice)` — owner or guardian, so the cap can follow the gas market
-  without a vote. `setMaxGasPrice(0)` is the guardian's emergency pause on Ethereum (the
-  constructor rejects 0 to catch deploy mistakes, the setter allows it on purpose). Reverts
-  `MaxGasPriceUnchanged`, or `GasPriceCapNotSupported` without an oracle. Emits `MaxGasPriceSet`.
+  without a vote. `setMaxGasPrice(0)` stops `checkUpkeep` on Ethereum (the constructor rejects
+  0 to catch deploy mistakes). Reverts `GasPriceCapNotSupported` without an oracle.
 - The contract is `Rescuable`; the owner is the rescue guardian.
 
 ## Testing
 
 ```bash
 # from repo root
-forge test --match-path 'workflows/execution-chain-robot/tests/*.t.sol' --no-match-contract 'Fork' -vvv   # unit
+forge test --match-path 'workflows/execution-chain-robot/tests/*.t.sol' --no-match-contract 'Fork' -vvv   # unit (base contracts: workflows/shared/tests)
 forge test --match-contract 'ExecutionChainRobotReceiverFork' -vvv   # fork; needs RPC_<CHAIN> (Plasma skipped without RPC_PLASMA)
 cd workflows/execution-chain-robot/offchain && bun test                                                 # CRE workflow (bun)
 ```
@@ -102,8 +108,8 @@ queued payload don't hide it, the gas cap, that expired payloads are skipped, an
 ## Deployment
 
 `DeployExecutionChainRobotReceiver` picks the config from `block.chainid`: the chain's
-`GovernanceV3<Chain>.PAYLOADS_CONTROLLER`, `EXECUTOR_LVL_1` / `GOVERNANCE_GUARDIAN` as owner
-/ guardian, and the gas cap on Ethereum. It reverts on any other chain.
+`GovernanceV3<Chain>.PAYLOADS_CONTROLLER`, the owner / guardian from `GovernanceOwners` (the
+chain's `EXECUTOR_LVL_1` / `GOVERNANCE_GUARDIAN`), and the gas cap on Ethereum. It reverts on any other chain.
 
 ```bash
 # from repo root, with ACCOUNT_NAME=<your-keystore-name> in .env

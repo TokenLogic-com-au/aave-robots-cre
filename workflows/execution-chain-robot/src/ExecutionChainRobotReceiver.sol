@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {OwnableWithGuardian} from 'solidity-utils/contracts/access-control/OwnableWithGuardian.sol';
-import {IERC165} from 'openzeppelin-contracts/contracts/utils/introspection/IERC165.sol';
-import {Rescuable} from 'aave-v4/utils/Rescuable.sol';
-import {AggregatorInterface} from 'aave-v3-origin/contracts/dependencies/chainlink/AggregatorInterface.sol';
 import {IPayloadsControllerCore} from 'aave-address-book/governance-v3/IPayloadsControllerCore.sol';
 
-import {IReceiver} from 'aave-cre/IReceiver.sol';
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
+import {WorkflowsBase} from 'aave-cre/WorkflowsBase.sol';
+import {GasCappedWorkflowsBase} from 'aave-cre/GasCappedWorkflowsBase.sol';
+import {IdDenylist} from 'aave-cre/IdDenylist.sol';
 import {IExecutionChainRobotReceiver} from './IExecutionChainRobotReceiver.sol';
 
 /// @title ExecutionChainRobotReceiver
@@ -18,15 +15,9 @@ import {IExecutionChainRobotReceiver} from './IExecutionChainRobotReceiver.sol';
 /// @dev Needs no on-chain role: `PayloadsController.executePayload` is permissionless.
 contract ExecutionChainRobotReceiver is
   IExecutionChainRobotReceiver,
-  OwnableWithGuardian,
-  Rescuable
+  GasCappedWorkflowsBase,
+  IdDenylist
 {
-  /// @inheritdoc IExecutionChainRobotReceiver
-  IPayloadsControllerCore public immutable override PAYLOADS_CONTROLLER;
-
-  /// @inheritdoc IExecutionChainRobotReceiver
-  address public immutable override GAS_PRICE_ORACLE;
-
   /// @inheritdoc IExecutionChainRobotReceiver
   uint256 public constant override MAX_ACTIONS = 5;
 
@@ -39,9 +30,8 @@ contract ExecutionChainRobotReceiver is
   /// @inheritdoc IExecutionChainRobotReceiver
   uint256 public constant override MAX_STATE_READ_GAS = 150_000;
 
-  uint256 internal _maxGasPrice;
-
-  mapping(uint256 id => bool) internal _disabled;
+  /// @inheritdoc IExecutionChainRobotReceiver
+  IPayloadsControllerCore public immutable override PAYLOADS_CONTROLLER;
 
   /// @param payloadsController_ The PayloadsController whose payloads to execute.
   /// @param gasPriceOracle_ Chainlink gas price feed, or the zero address for no cap.
@@ -54,54 +44,41 @@ contract ExecutionChainRobotReceiver is
     uint256 maxGasPrice_,
     address initialOwner_,
     address initialGuardian_
-  ) OwnableWithGuardian(initialOwner_, initialGuardian_) {
+  )
+    WorkflowsBase(initialOwner_, initialGuardian_)
+    GasCappedWorkflowsBase(gasPriceOracle_, maxGasPrice_)
+  {
     require(payloadsController_ != address(0), InvalidPayloadsController());
-    require(gasPriceOracle_ != address(0) || maxGasPrice_ == 0, GasPriceCapNotSupported());
-    require(gasPriceOracle_ == address(0) || maxGasPrice_ != 0, InvalidMaxGasPrice());
 
     PAYLOADS_CONTROLLER = IPayloadsControllerCore(payloadsController_);
-    GAS_PRICE_ORACLE = gasPriceOracle_;
-    if (gasPriceOracle_ != address(0)) {
-      _maxGasPrice = maxGasPrice_;
-      emit MaxGasPriceSet(maxGasPrice_);
+  }
+
+  /// @dev Permissionless. Executes exactly the payloads in the report, in order, skipping the
+  /// disabled and the no longer executable ones; reverts `NoActionCanBePerformed` if none was
+  /// executed, so a stale report fails `estimateGas`.
+  function _onReport(bytes calldata /* metadata */, bytes calldata report) internal override {
+    uint40[] memory payloadIds = abi.decode(report, (uint40[]));
+    bool executed = false;
+
+    for (uint256 i = 0; i < payloadIds.length; i++) {
+      uint40 payloadId = payloadIds[i];
+      if (isDisabled(payloadId) || !_canPayloadBeExecuted(payloadId)) continue;
+      PAYLOADS_CONTROLLER.executePayload(payloadId);
+      executed = true;
+      emit ActionSucceeded(payloadId);
     }
+    require(executed, NoActionCanBePerformed());
   }
 
-  /// @inheritdoc IExecutionChainRobotReceiver
-  function disableAutomation(uint256 id) external onlyOwnerOrGuardian {
-    require(!_disabled[id], AutomationStatusUnchanged(id));
-
-    _disabled[id] = true;
-    emit AutomationDisabled(id, true);
-  }
-
-  /// @inheritdoc IExecutionChainRobotReceiver
-  function enableAutomation(uint256 id) external onlyOwner {
-    require(_disabled[id], AutomationStatusUnchanged(id));
-
-    _disabled[id] = false;
-    emit AutomationDisabled(id, false);
-  }
-
-  /// @inheritdoc IExecutionChainRobotReceiver
-  function setMaxGasPrice(uint256 maxGasPrice) external onlyOwnerOrGuardian {
-    require(GAS_PRICE_ORACLE != address(0), GasPriceCapNotSupported());
-    require(maxGasPrice != _maxGasPrice, MaxGasPriceUnchanged());
-
-    _maxGasPrice = maxGasPrice;
-    emit MaxGasPriceSet(maxGasPrice);
-  }
-
-  /// @inheritdoc IAaveCREReceiver
   /// @dev Walks back from the latest payload until `MAX_SKIP` + 1 consecutive non-executable
-  /// ones, `MAX_ACTIONS` found or `MAX_SCANNED_PAYLOADS` scanned. An executable payload resets the
-  /// count; disabled and `Created` ones aren't counted, since anyone can create payloads, nor are
-  /// ones whose state can't be read within `MAX_STATE_READ_GAS`.
-  function checkUpkeep(
+  /// ones, `MAX_ACTIONS` found or `MAX_SCANNED_PAYLOADS` scanned. A `Queued` payload past its
+  /// delay is collected and resets the count; one still in its timelock, or `Executed`,
+  /// `Cancelled` or `Expired`, counts. `Created` ones don't count, since anyone can create
+  /// payloads, nor do disabled ones or ones whose state can't be read within
+  /// `MAX_STATE_READ_GAS`.
+  function _checkUpkeep(
     bytes calldata /* checkData */
-  ) external view returns (bool upkeepNeeded, bytes memory performData) {
-    if (!isGasPriceInRange()) return (false, '');
-
+  ) internal view override returns (bool, bytes memory) {
     uint40[] memory found = new uint40[](MAX_ACTIONS);
     uint256 count = 0;
     uint256 skipCount = 0;
@@ -113,7 +90,7 @@ contract ExecutionChainRobotReceiver is
     ) {
       index--;
       scanned++;
-      if (_disabled[index]) continue;
+      if (isDisabled(index)) continue;
 
       // `getPayloadState` copies the whole payload, so junk with large actions could otherwise
       // push checkUpkeep past the eth_call gas cap.
@@ -125,11 +102,15 @@ contract ExecutionChainRobotReceiver is
       } catch {
         continue;
       }
-      if (state == IPayloadsControllerCore.PayloadState.Created) continue;
-      if (state == IPayloadsControllerCore.PayloadState.Queued && _isPastDelay(index)) {
-        found[count++] = index;
-        skipCount = 0;
-      } else {
+
+      if (state == IPayloadsControllerCore.PayloadState.Queued) {
+        if (_isPastDelay(index)) {
+          found[count++] = index;
+          skipCount = 0;
+        } else {
+          skipCount++;
+        }
+      } else if (state != IPayloadsControllerCore.PayloadState.Created) {
         skipCount++;
       }
     }
@@ -139,48 +120,6 @@ contract ExecutionChainRobotReceiver is
     uint40[] memory payloadIds = new uint40[](count);
     for (uint256 i = 0; i < count; i++) payloadIds[i] = found[count - 1 - i];
     return (true, abi.encode(payloadIds));
-  }
-
-  /// @inheritdoc IReceiver
-  /// @dev Permissionless. Executes each payload still executable and not disabled; reverts
-  /// `NoActionCanBePerformed` if none was, so a stale report fails `estimateGas`.
-  function onReport(bytes calldata /* metadata */, bytes calldata report) external override {
-    uint40[] memory payloadIds = abi.decode(report, (uint40[]));
-    bool executed = false;
-
-    for (uint256 i = 0; i < payloadIds.length; i++) {
-      uint40 payloadId = payloadIds[i];
-      if (_disabled[payloadId] || !_canPayloadBeExecuted(payloadId)) continue;
-      PAYLOADS_CONTROLLER.executePayload(payloadId);
-      executed = true;
-      emit ActionSucceeded(payloadId);
-    }
-    require(executed, NoActionCanBePerformed());
-  }
-
-  /// @inheritdoc IExecutionChainRobotReceiver
-  function isDisabled(uint256 id) external view returns (bool) {
-    return _disabled[id];
-  }
-
-  /// @inheritdoc IExecutionChainRobotReceiver
-  function getMaxGasPrice() external view returns (uint256) {
-    return _maxGasPrice;
-  }
-
-  /// @inheritdoc IExecutionChainRobotReceiver
-  function isGasPriceInRange() public view returns (bool) {
-    if (GAS_PRICE_ORACLE == address(0)) return true;
-    int256 gasPrice = AggregatorInterface(GAS_PRICE_ORACLE).latestAnswer();
-    return gasPrice >= 0 && uint256(gasPrice) <= _maxGasPrice;
-  }
-
-  /// @inheritdoc IERC165
-  function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
-    return
-      interfaceId == type(IReceiver).interfaceId ||
-      interfaceId == type(IAaveCREReceiver).interfaceId ||
-      interfaceId == type(IERC165).interfaceId;
   }
 
   /// @dev Same condition `executePayload` enforces: queued (not expired) and past its delay.
@@ -195,10 +134,5 @@ contract ExecutionChainRobotReceiver is
   function _isPastDelay(uint40 payloadId) internal view returns (bool) {
     IPayloadsControllerCore.Payload memory payload = PAYLOADS_CONTROLLER.getPayloadById(payloadId);
     return block.timestamp > payload.queuedAt + payload.delay;
-  }
-
-  /// @inheritdoc Rescuable
-  function _rescueGuardian() internal view override returns (address) {
-    return owner();
   }
 }
