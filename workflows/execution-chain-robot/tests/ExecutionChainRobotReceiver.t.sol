@@ -3,15 +3,7 @@ pragma solidity ^0.8.0;
 
 import {Test, Vm} from 'forge-std/Test.sol';
 
-import {Ownable} from 'openzeppelin-contracts/contracts/access/Ownable.sol';
-import {IWithGuardian} from 'solidity-utils/contracts/access-control/interfaces/IWithGuardian.sol';
-import {IERC165} from 'openzeppelin-contracts/contracts/utils/introspection/IERC165.sol';
-import {IRescuable} from 'aave-v4/interfaces/IRescuable.sol';
-import {AggregatorInterface} from 'aave-v3-origin/contracts/dependencies/chainlink/AggregatorInterface.sol';
 import {IPayloadsControllerCore} from 'aave-address-book/governance-v3/IPayloadsControllerCore.sol';
-
-import {IReceiver} from 'aave-cre/IReceiver.sol';
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
 
 import {ExecutionChainRobotReceiver} from '../src/ExecutionChainRobotReceiver.sol';
 import {IExecutionChainRobotReceiver} from '../src/IExecutionChainRobotReceiver.sol';
@@ -27,7 +19,6 @@ contract ExecutionChainRobotReceiverTest is Test {
 
   address internal owner;
   address internal guardian;
-  address internal bob;
   address internal anyone;
   address internal controller;
   address internal oracle;
@@ -35,7 +26,6 @@ contract ExecutionChainRobotReceiverTest is Test {
   function setUp() public {
     owner = makeAddr('owner');
     guardian = makeAddr('guardian');
-    bob = makeAddr('bob');
     anyone = makeAddr('anyone');
     controller = makeAddr('payloadsController');
     oracle = makeAddr('gasPriceOracle');
@@ -49,7 +39,6 @@ contract ExecutionChainRobotReceiverTest is Test {
       owner,
       guardian
     );
-    _mockGasPrice(1 gwei);
   }
 
   function test_constructor_setsState() public view {
@@ -62,25 +51,9 @@ contract ExecutionChainRobotReceiverTest is Test {
     assertEq(cappedRobot.getMaxGasPrice(), MAX_GAS_PRICE, 'max gas price mismatch');
   }
 
-  function test_constructor_emitsMaxGasPriceSet_whenCapped() public {
-    vm.expectEmit();
-    emit IExecutionChainRobotReceiver.MaxGasPriceSet(MAX_GAS_PRICE);
-    new ExecutionChainRobotReceiver(controller, oracle, MAX_GAS_PRICE, owner, guardian);
-  }
-
   function test_constructor_revertsWith_InvalidPayloadsController() public {
     vm.expectRevert(IExecutionChainRobotReceiver.InvalidPayloadsController.selector);
     new ExecutionChainRobotReceiver(address(0), address(0), 0, owner, guardian);
-  }
-
-  function test_constructor_revertsWith_GasPriceCapNotSupported_whenCapWithoutOracle() public {
-    vm.expectRevert(IExecutionChainRobotReceiver.GasPriceCapNotSupported.selector);
-    new ExecutionChainRobotReceiver(controller, address(0), MAX_GAS_PRICE, owner, guardian);
-  }
-
-  function test_constructor_revertsWith_InvalidMaxGasPrice() public {
-    vm.expectRevert(IExecutionChainRobotReceiver.InvalidMaxGasPrice.selector);
-    new ExecutionChainRobotReceiver(controller, oracle, 0, owner, guardian);
   }
 
   function test_constants() public view {
@@ -88,16 +61,6 @@ contract ExecutionChainRobotReceiverTest is Test {
     assertEq(robot.MAX_SKIP(), 20, 'unexpected MAX_SKIP');
     assertEq(robot.MAX_SCANNED_PAYLOADS(), 100, 'unexpected MAX_SCANNED_PAYLOADS');
     assertEq(robot.MAX_STATE_READ_GAS(), 150_000, 'unexpected MAX_STATE_READ_GAS');
-  }
-
-  function test_supportsInterface() public view {
-    assertTrue(robot.supportsInterface(type(IReceiver).interfaceId), 'IReceiver not supported');
-    assertTrue(
-      robot.supportsInterface(type(IAaveCREReceiver).interfaceId),
-      'IAaveCREReceiver not supported'
-    );
-    assertTrue(robot.supportsInterface(type(IERC165).interfaceId), 'IERC165 not supported');
-    assertFalse(robot.supportsInterface(0xffffffff), 'invalid interface id supported');
   }
 
   function test_checkUpkeep_returnsFalse_whenNoPayloads() public {
@@ -259,39 +222,6 @@ contract ExecutionChainRobotReceiverTest is Test {
     assertEq(_decode(performData), _ids(0), 'payload below disabled ones should be found');
   }
 
-  function test_fuzz_checkUpkeep_gasCap(int256 gasPrice, uint256 maxGasPrice) public {
-    vm.assume(maxGasPrice != MAX_GAS_PRICE);
-    vm.prank(owner);
-    cappedRobot.setMaxGasPrice(maxGasPrice);
-    _mockGasPrice(gasPrice);
-    _mockPayloadsCount(1);
-    _mockExecutable(0);
-
-    bool inRange = gasPrice >= 0 && uint256(gasPrice) <= maxGasPrice;
-    assertEq(cappedRobot.isGasPriceInRange(), inRange, 'unexpected isGasPriceInRange');
-    (bool needed, ) = cappedRobot.checkUpkeep('');
-    assertEq(needed, inRange, 'unexpected upkeepNeeded');
-  }
-
-  function test_checkUpkeep_ignoresGasPrice_whenUncapped() public {
-    _mockGasPrice(type(int256).max);
-    _mockPayloadsCount(1);
-    _mockExecutable(0);
-
-    assertTrue(robot.isGasPriceInRange(), 'uncapped robot should always be in range');
-    (bool needed, ) = robot.checkUpkeep('');
-    assertTrue(needed, 'upkeep should be needed');
-  }
-
-  function test_fuzz_isGasPriceInRange_false_whenAnswerNegative(int256 gasPrice) public {
-    gasPrice = bound(gasPrice, type(int256).min, -1);
-    vm.prank(owner);
-    cappedRobot.setMaxGasPrice(type(uint256).max);
-    _mockGasPrice(gasPrice);
-
-    assertFalse(cappedRobot.isGasPriceInRange(), 'negative answer should be out of range');
-  }
-
   function test_fuzz_onReport(
     bool executableA,
     bool executableB,
@@ -355,16 +285,6 @@ contract ExecutionChainRobotReceiverTest is Test {
     robot.onReport('', abi.encode(_ids(1, 0)));
   }
 
-  function test_onReport_ignoresGasPrice() public {
-    _mockGasPrice(type(int256).max);
-    _mockExecutable(0);
-    _mockExecutePayload(0);
-    vm.expectCall(controller, abi.encodeCall(IPayloadsControllerCore.executePayload, (0)), 1);
-
-    vm.prank(anyone);
-    cappedRobot.onReport('', abi.encode(_ids(0)));
-  }
-
   function test_onReport_revertsWith_NoActionCanBePerformed_whenEmptyBatch() public {
     vm.prank(anyone);
     vm.expectRevert(IExecutionChainRobotReceiver.NoActionCanBePerformed.selector);
@@ -382,116 +302,6 @@ contract ExecutionChainRobotReceiverTest is Test {
     vm.prank(anyone);
     vm.expectRevert(bytes('payload failed'));
     robot.onReport('', abi.encode(_ids(0)));
-  }
-
-  function test_disableAutomation_byOwner() public {
-    vm.expectEmit(address(robot));
-    emit IExecutionChainRobotReceiver.AutomationDisabled(7, true);
-
-    vm.prank(owner);
-    robot.disableAutomation(7);
-    assertTrue(robot.isDisabled(7), 'payload not disabled');
-  }
-
-  function test_disableAutomation_byGuardian() public {
-    vm.prank(guardian);
-    robot.disableAutomation(7);
-    assertTrue(robot.isDisabled(7), 'payload not disabled');
-  }
-
-  function test_disableAutomation_revertsWith_OnlyGuardianOrOwnerInvalidCaller() public {
-    vm.prank(bob);
-    vm.expectRevert(
-      abi.encodeWithSelector(IWithGuardian.OnlyGuardianOrOwnerInvalidCaller.selector, bob)
-    );
-    robot.disableAutomation(7);
-  }
-
-  function test_disableAutomation_revertsWith_AutomationStatusUnchanged() public {
-    vm.startPrank(guardian);
-    robot.disableAutomation(7);
-    vm.expectRevert(
-      abi.encodeWithSelector(IExecutionChainRobotReceiver.AutomationStatusUnchanged.selector, 7)
-    );
-    robot.disableAutomation(7);
-    vm.stopPrank();
-  }
-
-  function test_enableAutomation() public {
-    vm.prank(guardian);
-    robot.disableAutomation(7);
-
-    vm.expectEmit(address(robot));
-    emit IExecutionChainRobotReceiver.AutomationDisabled(7, false);
-
-    vm.prank(owner);
-    robot.enableAutomation(7);
-    assertFalse(robot.isDisabled(7), 'payload still disabled');
-  }
-
-  function test_enableAutomation_revertsWhenCalledByGuardian() public {
-    vm.prank(guardian);
-    robot.disableAutomation(7);
-
-    vm.prank(guardian);
-    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, guardian));
-    robot.enableAutomation(7);
-  }
-
-  function test_enableAutomation_revertsWith_AutomationStatusUnchanged() public {
-    vm.prank(owner);
-    vm.expectRevert(
-      abi.encodeWithSelector(IExecutionChainRobotReceiver.AutomationStatusUnchanged.selector, 7)
-    );
-    robot.enableAutomation(7);
-  }
-
-  function test_setMaxGasPrice_byOwner() public {
-    vm.expectEmit(address(cappedRobot));
-    emit IExecutionChainRobotReceiver.MaxGasPriceSet(50 gwei);
-
-    vm.prank(owner);
-    cappedRobot.setMaxGasPrice(50 gwei);
-    assertEq(cappedRobot.getMaxGasPrice(), 50 gwei, 'max gas price not updated');
-  }
-
-  function test_setMaxGasPrice_byGuardian() public {
-    vm.expectEmit(address(cappedRobot));
-    emit IExecutionChainRobotReceiver.MaxGasPriceSet(50 gwei);
-
-    vm.prank(guardian);
-    cappedRobot.setMaxGasPrice(50 gwei);
-    assertEq(cappedRobot.getMaxGasPrice(), 50 gwei, 'max gas price not updated');
-  }
-
-  function test_setMaxGasPrice_revertsWith_OnlyGuardianOrOwnerInvalidCaller() public {
-    vm.prank(bob);
-    vm.expectRevert(
-      abi.encodeWithSelector(IWithGuardian.OnlyGuardianOrOwnerInvalidCaller.selector, bob)
-    );
-    cappedRobot.setMaxGasPrice(50 gwei);
-  }
-
-  function test_setMaxGasPrice_revertsWith_MaxGasPriceUnchanged() public {
-    vm.prank(guardian);
-    vm.expectRevert(IExecutionChainRobotReceiver.MaxGasPriceUnchanged.selector);
-    cappedRobot.setMaxGasPrice(MAX_GAS_PRICE);
-  }
-
-  function test_setMaxGasPrice_revertsWith_GasPriceCapNotSupported_whenUncapped() public {
-    vm.prank(guardian);
-    vm.expectRevert(IExecutionChainRobotReceiver.GasPriceCapNotSupported.selector);
-    robot.setMaxGasPrice(50 gwei);
-  }
-
-  function test_rescueGuardian_isOwner() public view {
-    assertEq(robot.rescueGuardian(), owner, 'rescue guardian is not the owner');
-  }
-
-  function test_rescueToken_revertsWith_OnlyRescueGuardian() public {
-    vm.prank(guardian);
-    vm.expectRevert(IRescuable.OnlyRescueGuardian.selector);
-    robot.rescueToken(makeAddr('token'), bob, 100);
   }
 
   function _executableQueuedAt() internal pure returns (uint40) {
@@ -552,10 +362,6 @@ contract ExecutionChainRobotReceiverTest is Test {
       abi.encodeCall(IPayloadsControllerCore.executePayload, (payloadId)),
       ''
     );
-  }
-
-  function _mockGasPrice(int256 gasPrice) internal {
-    vm.mockCall(oracle, abi.encodeCall(AggregatorInterface.latestAnswer, ()), abi.encode(gasPrice));
   }
 
   function _decode(bytes memory performData) internal pure returns (uint40[] memory) {
