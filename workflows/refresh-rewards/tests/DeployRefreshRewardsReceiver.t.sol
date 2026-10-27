@@ -5,6 +5,7 @@ import {Test} from 'forge-std/Test.sol';
 
 import {ChainIds} from 'solidity-utils/contracts/utils/ChainHelpers.sol';
 
+import {GovernanceOwners} from '../../shared/scripts/GovernanceOwners.sol';
 import {RefreshRewardsReceiver} from '../src/RefreshRewardsReceiver.sol';
 import {DeployRefreshRewardsReceiver} from '../scripts/DeployRefreshRewardsReceiver.s.sol';
 
@@ -19,7 +20,7 @@ contract DeployRefreshRewardsReceiverTest is Test {
   }
 
   /// The offchain config and the deploy script must cover the same chains, with the same factories.
-  function test_getDeployConfig_matchesOffchainConfig() public view {
+  function test_getFactories_matchesOffchainConfig() public view {
     string memory json = vm.readFile(OFFCHAIN_CONFIG);
     uint256 chains = 0;
     while (vm.keyExistsJson(json, string.concat('.evms[', vm.toString(chains), ']'))) chains++;
@@ -35,12 +36,11 @@ contract DeployRefreshRewardsReceiverTest is Test {
         string.concat(path, '.factories')
       );
 
-      DeployRefreshRewardsReceiver.DeployConfig memory config = script.getDeployConfig(
-        _chainId(chainName)
+      assertEq(
+        script.getFactories(_chainId(chainName)),
+        factories,
+        string.concat(chainName, ': factories mismatch')
       );
-      assertTrue(config.owner != address(0), string.concat(chainName, ': owner is zero'));
-      assertTrue(config.guardian != address(0), string.concat(chainName, ': guardian is zero'));
-      assertEq(config.factories, factories, string.concat(chainName, ': factories mismatch'));
     }
 
     uint256[] memory supported = _supportedChainIds();
@@ -52,24 +52,23 @@ contract DeployRefreshRewardsReceiverTest is Test {
     }
   }
 
-  function test_getDeployConfig_revertsOnUnsupportedChain() public {
+  function test_getFactories_revertsOnUnsupportedChain() public {
     vm.expectRevert(bytes('unsupported chain'));
-    script.getDeployConfig(ChainIds.POLYGON);
+    script.getFactories(ChainIds.POLYGON);
   }
 
   function test_run_deploysWithChainConfig() public {
     vm.chainId(ChainIds.MAINNET);
-    DeployRefreshRewardsReceiver.DeployConfig memory config = script.getDeployConfig(
-      ChainIds.MAINNET
-    );
+    (address owner, address guardian) = GovernanceOwners.get(ChainIds.MAINNET);
+    address[] memory factories = script.getFactories(ChainIds.MAINNET);
 
     RefreshRewardsReceiver receiver = RefreshRewardsReceiver(script.run());
 
-    assertEq(receiver.owner(), config.owner, 'owner mismatch');
-    assertEq(receiver.guardian(), config.guardian, 'guardian mismatch');
-    assertEq(config.factories.length, 2, 'expected Core and Lido factories');
-    for (uint256 i = 0; i < config.factories.length; i++) {
-      assertTrue(receiver.isFactoryEnabled(config.factories[i]), 'factory not enabled');
+    assertEq(receiver.owner(), owner, 'owner mismatch');
+    assertEq(receiver.guardian(), guardian, 'guardian mismatch');
+    assertEq(factories.length, 2, 'expected Core and Lido factories');
+    for (uint256 i = 0; i < factories.length; i++) {
+      assertTrue(receiver.isFactoryEnabled(factories[i]), 'factory not enabled');
     }
   }
 
