@@ -11,7 +11,7 @@ Ethereum only (Governance V3 lives on mainnet).
 ```
 governance-chain-robot/
 ├── src/
-│   ├── GovernanceChainRobotReceiver.sol        # the robot — inherits IAaveCREReceiver, permissionless onReport
+│   ├── GovernanceChainRobotReceiver.sol        # the robot — GasCappedWorkflowsBase + IdDenylist, permissionless onReport
 │   └── IGovernanceChainRobotReceiver.sol       # robot interface
 ├── tests/
 │   ├── GovernanceChainRobotReceiver.t.sol      # unit tests against MockGovernance
@@ -25,10 +25,12 @@ governance-chain-robot/
 
 ## On-chain behavior
 
-`GovernanceChainRobotReceiver` implements [`IAaveCREReceiver`](../shared/src/IAaveCREReceiver.sol):
+`GovernanceChainRobotReceiver` extends
+[`GasCappedWorkflowsBase`](../shared/src/GasCappedWorkflowsBase.sol) and
+[`IdDenylist`](../shared/src/IdDenylist.sol), with proposal ids as the denylisted ids:
 
-- `checkUpkeep(_) → (needed, ActionWithId[])` — returns nothing while the
-  [Fast Gas / Gwei](https://etherscan.io/address/0x169E633A2D1E6c10dD91238Ba11c4A708dfEF37C)
+- `checkUpkeep(_) → (needed, ActionWithId[])` — returns nothing while automation is disabled
+  or the [Fast Gas / Gwei](https://etherscan.io/address/0x169E633A2D1E6c10dD91238Ba11c4A708dfEF37C)
   feed is above `getMaxGasPrice()`. Otherwise it walks back from the latest proposal and,
   for each proposal not in a final state, picks the first that applies of:
   1. `PerformCancel` — the creator's proposition power is not above the access level's minimum;
@@ -39,7 +41,8 @@ governance-chain-robot/
   (a non-final proposal resets the count, disabled ones are ignored), or at `MAX_ACTIONS`
   (5). `checkData` is unused.
 
-- `onReport(metadata, ActionWithId[])` — performs the actions oldest proposal first,
+- `onReport(metadata, ActionWithId[])` — reverts `AutomationIsDisabled` while automation is
+  disabled, otherwise performs the actions oldest proposal first,
   skipping disabled proposals and actions that no longer apply. A reverting Governance call
   emits `ActionFailed` instead of reverting the batch. Reverts `NoActionCanBePerformed` if
   nothing was performed.
@@ -61,13 +64,16 @@ fees), so the robot needs no role or funds.
 
 ### Access control
 
-- `disableAutomation(id)` — owner or guardian. `enableAutomation(id)` — owner. Both revert
-  `AutomationStatusUnchanged` when the status doesn't change and emit
-  `AutomationDisabled(id, disabled)`. New proposals are automated by default.
+From the shared base:
+
+- `disableAutomation()` (owner or guardian) / `enableAutomation()` (owner) — the whole robot.
+- `disableAutomation(id)` (owner or guardian) / `enableAutomation(id)` (owner) — a single
+  proposal; new proposals are automated by default. Revert `AutomationStatusUnchanged` when
+  the status doesn't change and emit `AutomationDisabled(id, disabled)`.
 - `setMaxGasPrice(maxGasPrice)` — owner or guardian, so the cap can be tuned without a vote.
-  Reverts `MaxGasPriceUnchanged`; emits `MaxGasPriceSet`. `setMaxGasPrice(0)` is the
-  guardian's emergency pause: the constructor rejects 0 to catch deploy mistakes, the setter
-  allows it on purpose.
+  `setMaxGasPrice(0)` is the guardian's emergency pause: the constructor rejects 0 to catch
+  deploy mistakes, the setter allows it on purpose. The constructor also requires a gas price
+  feed: on Ethereum the robot is always capped.
 - Owner `EXECUTOR_LVL_1`, guardian `GOVERNANCE_GUARDIAN`. `Rescuable`, with the owner as
   rescue guardian.
 
@@ -83,13 +89,15 @@ cd workflows/governance-chain-robot/offchain && bun test                        
 The fork suite pins block `26207306` (proposal 531 `Active`, 532 `Created`) and checks every
 `checkUpkeep` against BGD's live keeper. It activates 532 after its cooldown, queues and
 executes 531, cancels both once their creators' power is mocked to zero, and covers the gas
-price cap, a disabled proposal and a stale report.
+price cap, a disabled proposal and a stale report. The access control, global switch, gas cap
+and per-id denylist are tested once in [`shared/tests`](../shared/tests).
 
 ## Deployment
 
 `DeployGovernanceChainRobotReceiver` wires `GovernanceV3Ethereum.GOVERNANCE`,
-`ChainlinkEthereum.Fast_Gas__Gwei` and `MAX_GAS_PRICE` (150 gwei, BGD's value), with
-`EXECUTOR_LVL_1` / `GOVERNANCE_GUARDIAN` as owner / guardian. It reverts on any other chain.
+`ChainlinkEthereum.Fast_Gas__Gwei` and `MAX_GAS_PRICE` (150 gwei, BGD's value), with the
+owner / guardian from `GovernanceOwners` (`EXECUTOR_LVL_1` / `GOVERNANCE_GUARDIAN`). It
+reverts on any other chain.
 
 ```bash
 # from repo root, with ACCOUNT_NAME=<your-keystore-name> in .env
