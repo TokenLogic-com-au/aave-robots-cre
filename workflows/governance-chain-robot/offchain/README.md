@@ -1,16 +1,14 @@
 # Governance Chain Robot — CRE workflow
 
 Off-chain CRE workflow driving
-[`GovernanceChainRobotReceiver`](../src/GovernanceChainRobotReceiver.sol). Every 30 seconds
-(`schedule`) it calls `checkUpkeep` (empty `checkData`) and, when an action is due:
-
-1. estimates `onReport(0x, performData)` and skips the tick if it reverts, or if
-   `estimate * 64 / 63 + WRITE_OVERHEAD_GAS` (250k, forwarder overhead) exceeds the CRE
-   write quota `MAX_WRITE_GAS` (16,777,216);
-2. signs `performData` and writes it without `gasConfig`, so the DON uses the full quota.
-   The estimate is never the gas limit: with too little gas `onReport` can succeed while
-   a Governance call or its a.DI forward fails;
-3. logs a failure if the tx or the receiver's `onReport` reverted.
+[`GovernanceChainRobotReceiver`](../src/GovernanceChainRobotReceiver.sol). Every 10 minutes
+(`schedule`, the shared `GOVERNANCE_SCHEDULE`) it calls `checkUpkeep` (empty `checkData`) and,
+when an action is due, hands `performData` to the shared `submitReport`
+([`shared/offchain/checkUpkeep.ts`](../../shared/offchain/checkUpkeep.ts)), which estimates
+`onReport`, skips the tick if it would revert or not fit the CRE write quota, and otherwise
+writes the signed report with the full quota as gas limit. The estimate is never the gas
+limit: with too little gas `onReport` can succeed while a Governance call or its a.DI forward
+fails.
 
 ## Config
 
