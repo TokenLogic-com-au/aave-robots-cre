@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {OwnableWithGuardian} from 'solidity-utils/contracts/access-control/OwnableWithGuardian.sol';
-import {IERC165} from 'openzeppelin-contracts/contracts/utils/introspection/IERC165.sol';
 import {EnumerableSet} from 'openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol';
-import {Rescuable} from 'aave-v4/utils/Rescuable.sol';
 
-import {IReceiver} from 'aave-cre/IReceiver.sol';
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
+import {WorkflowsBase} from 'aave-cre/WorkflowsBase.sol';
 import {ICapAgentReceiver, IAgentHub} from './ICapAgentReceiver.sol';
 
 /// @title CapAgentReceiver
@@ -15,17 +11,17 @@ import {ICapAgentReceiver, IAgentHub} from './ICapAgentReceiver.sol';
 /// @notice Receives reports from the CRE workflow and injects pending Risk Oracle updates
 /// through the AgentHub. Native CRE port of BGD's `ChainlinkAgentHub`.
 /// @dev `onReport` is permissionless: `AgentHub.execute` re-validates every update.
-contract CapAgentReceiver is ICapAgentReceiver, OwnableWithGuardian, Rescuable {
+contract CapAgentReceiver is WorkflowsBase, ICapAgentReceiver {
   using EnumerableSet for EnumerableSet.UintSet;
-
-  /// @inheritdoc ICapAgentReceiver
-  IAgentHub public immutable override AGENT_HUB;
 
   /// @inheritdoc ICapAgentReceiver
   uint256 public constant override MAX_ACTIONS = 10;
 
   /// @inheritdoc ICapAgentReceiver
   uint256 public constant override MAX_REASON_LENGTH = 256;
+
+  /// @inheritdoc ICapAgentReceiver
+  IAgentHub public immutable override AGENT_HUB;
 
   EnumerableSet.UintSet internal _enabledAgents;
 
@@ -38,10 +34,10 @@ contract CapAgentReceiver is ICapAgentReceiver, OwnableWithGuardian, Rescuable {
     address initialOwner_,
     address initialGuardian_,
     uint256[] memory initialAgentIds_
-  ) OwnableWithGuardian(initialOwner_, initialGuardian_) {
+  ) WorkflowsBase(initialOwner_, initialGuardian_) {
     require(agentHub_ != address(0), InvalidAgentHub());
-    AGENT_HUB = IAgentHub(agentHub_);
 
+    AGENT_HUB = IAgentHub(agentHub_);
     for (uint256 i = 0; i < initialAgentIds_.length; i++) {
       _enableAgent(initialAgentIds_[i]);
     }
@@ -55,24 +51,24 @@ contract CapAgentReceiver is ICapAgentReceiver, OwnableWithGuardian, Rescuable {
   /// @inheritdoc ICapAgentReceiver
   function disableAgent(uint256 agentId) external onlyOwnerOrGuardian {
     require(_enabledAgents.remove(agentId), AgentStatusUnchanged(agentId, false));
+
     emit AgentStatusUpdated(agentId, false);
   }
 
-  /// @inheritdoc IAaveCREReceiver
-  function checkUpkeep(
-    bytes calldata /* checkData */
-  ) external view returns (bool upkeepNeeded, bytes memory performData) {
-    IAgentHub.ActionData[] memory actions = _checkAgents(_executableAgents());
-    if (actions.length == 0) return (false, '');
-
-    return (true, abi.encode(_capActions(actions)));
+  /// @inheritdoc ICapAgentReceiver
+  function isAgentEnabled(uint256 agentId) external view returns (bool) {
+    return _enabledAgents.contains(agentId);
   }
 
-  /// @inheritdoc IReceiver
+  /// @inheritdoc ICapAgentReceiver
+  function getEnabledAgents() external view returns (uint256[] memory) {
+    return _enabledAgents.values();
+  }
+
   /// @dev Drops actions for agents not enabled on this robot and executes each market update
   /// in its own `execute` call, so one failing injection doesn't block the others. Reverts
   /// `NoActionCanBePerformed` if none succeeded, so a stale report fails `estimateGas`.
-  function onReport(bytes calldata /* metadata */, bytes calldata report) external override {
+  function _onReport(bytes calldata /* metadata */, bytes calldata report) internal override {
     IAgentHub.ActionData[] memory actions = _enabledActions(
       abi.decode(report, (IAgentHub.ActionData[]))
     );
@@ -92,28 +88,54 @@ contract CapAgentReceiver is ICapAgentReceiver, OwnableWithGuardian, Rescuable {
     require(executed, IAgentHub.NoActionCanBePerformed());
   }
 
-  /// @inheritdoc ICapAgentReceiver
-  function isAgentEnabled(uint256 agentId) external view returns (bool) {
-    return _enabledAgents.contains(agentId);
+  function _checkUpkeep(
+    bytes calldata /* checkData */
+  ) internal view override returns (bool, bytes memory) {
+    IAgentHub.ActionData[] memory actions = _checkAgents(_executableAgents());
+    if (actions.length == 0) return (false, '');
+
+    return (true, abi.encode(_capActions(actions)));
   }
 
-  /// @inheritdoc ICapAgentReceiver
-  function getEnabledAgents() external view returns (uint256[] memory) {
-    return _enabledAgents.values();
+  /// @dev Keeps the actions for agents enabled on this robot.
+  function _enabledActions(
+    IAgentHub.ActionData[] memory actions
+  ) internal view returns (IAgentHub.ActionData[] memory) {
+    IAgentHub.ActionData[] memory buffer = new IAgentHub.ActionData[](actions.length);
+    uint256 count = 0;
+
+    for (uint256 i = 0; i < actions.length; i++) {
+      if (_enabledAgents.contains(actions[i].agentId)) buffer[count++] = actions[i];
+    }
+
+    return _shrink(buffer, count);
   }
 
-  /// @inheritdoc IERC165
-  function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
-    return
-      interfaceId == type(IReceiver).interfaceId ||
-      interfaceId == type(IAaveCREReceiver).interfaceId ||
-      interfaceId == type(IERC165).interfaceId;
-  }
+  /// @dev `AGENT_HUB.execute` for a single market update, copying at most `MAX_REASON_LENGTH`
+  /// bytes of revert data.
+  function _execute(
+    uint256 agentId,
+    address market
+  ) internal returns (bool success, bytes memory reason) {
+    IAgentHub.ActionData[] memory action = new IAgentHub.ActionData[](1);
+    action[0].agentId = agentId;
+    action[0].markets = new address[](1);
+    action[0].markets[0] = market;
+    bytes memory data = abi.encodeCall(IAgentHub.execute, (action));
+    address hub = address(AGENT_HUB);
+    uint256 length;
 
-  function _enableAgent(uint256 agentId) internal {
-    require(agentId < AGENT_HUB.getAgentCount(), InvalidAgent(agentId));
-    require(_enabledAgents.add(agentId), AgentStatusUnchanged(agentId, true));
-    emit AgentStatusUpdated(agentId, true);
+    assembly ('memory-safe') {
+      success := call(gas(), hub, 0, add(data, 0x20), mload(data), 0, 0)
+      length := returndatasize()
+    }
+    if (success) return (true, '');
+
+    if (length > MAX_REASON_LENGTH) length = MAX_REASON_LENGTH;
+    reason = new bytes(length);
+    assembly ('memory-safe') {
+      returndatacopy(add(reason, 0x20), 0, length)
+    }
   }
 
   /// @dev Enabled agents `execute` would act on for this contract: a permissioned agent only
@@ -158,33 +180,6 @@ contract CapAgentReceiver is ICapAgentReceiver, OwnableWithGuardian, Rescuable {
     return _shrink(buffer, count);
   }
 
-  /// @dev `AGENT_HUB.execute` for a single market update, copying at most `MAX_REASON_LENGTH`
-  /// bytes of revert data.
-  function _execute(
-    uint256 agentId,
-    address market
-  ) internal returns (bool success, bytes memory reason) {
-    IAgentHub.ActionData[] memory action = new IAgentHub.ActionData[](1);
-    action[0].agentId = agentId;
-    action[0].markets = new address[](1);
-    action[0].markets[0] = market;
-    bytes memory data = abi.encodeCall(IAgentHub.execute, (action));
-    address hub = address(AGENT_HUB);
-    uint256 length;
-
-    assembly ('memory-safe') {
-      success := call(gas(), hub, 0, add(data, 0x20), mload(data), 0, 0)
-      length := returndatasize()
-    }
-    if (success) return (true, '');
-
-    if (length > MAX_REASON_LENGTH) length = MAX_REASON_LENGTH;
-    reason = new bytes(length);
-    assembly ('memory-safe') {
-      returndatacopy(add(reason, 0x20), 0, length)
-    }
-  }
-
   /// @dev Keeps the first `MAX_ACTIONS` market updates, in order (the hub's `maxBatchSize` is
   /// unset, so `check` returns every pending update).
   function _capActions(
@@ -207,18 +202,11 @@ contract CapAgentReceiver is ICapAgentReceiver, OwnableWithGuardian, Rescuable {
     return _shrink(buffer, count);
   }
 
-  /// @dev Keeps the actions for agents enabled on this robot.
-  function _enabledActions(
-    IAgentHub.ActionData[] memory actions
-  ) internal view returns (IAgentHub.ActionData[] memory) {
-    IAgentHub.ActionData[] memory buffer = new IAgentHub.ActionData[](actions.length);
-    uint256 count = 0;
+  function _enableAgent(uint256 agentId) internal {
+    require(agentId < AGENT_HUB.getAgentCount(), InvalidAgent(agentId));
+    require(_enabledAgents.add(agentId), AgentStatusUnchanged(agentId, true));
 
-    for (uint256 i = 0; i < actions.length; i++) {
-      if (_enabledAgents.contains(actions[i].agentId)) buffer[count++] = actions[i];
-    }
-
-    return _shrink(buffer, count);
+    emit AgentStatusUpdated(agentId, true);
   }
 
   function _shrink(
@@ -227,10 +215,5 @@ contract CapAgentReceiver is ICapAgentReceiver, OwnableWithGuardian, Rescuable {
   ) internal pure returns (IAgentHub.ActionData[] memory result) {
     result = new IAgentHub.ActionData[](count);
     for (uint256 i = 0; i < count; i++) result[i] = buffer[i];
-  }
-
-  /// @inheritdoc Rescuable
-  function _rescueGuardian() internal view override returns (address) {
-    return owner();
   }
 }

@@ -5,11 +5,6 @@ import {Test, Vm} from 'forge-std/Test.sol';
 
 import {Ownable} from 'openzeppelin-contracts/contracts/access/Ownable.sol';
 import {IWithGuardian} from 'solidity-utils/contracts/access-control/interfaces/IWithGuardian.sol';
-import {IERC165} from 'openzeppelin-contracts/contracts/utils/introspection/IERC165.sol';
-import {IRescuable} from 'aave-v4/interfaces/IRescuable.sol';
-
-import {IReceiver} from 'aave-cre/IReceiver.sol';
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
 
 import {ICapAgentReceiver, IAgentHub} from '../src/ICapAgentReceiver.sol';
 import {CapAgentReceiverHarness} from './helpers/CapAgentReceiverHarness.sol';
@@ -108,16 +103,6 @@ contract CapAgentReceiverTest is Test {
 
   function test_MAX_REASON_LENGTH_is256() public view {
     assertEq(robot.MAX_REASON_LENGTH(), 256, 'unexpected MAX_REASON_LENGTH');
-  }
-
-  function test_supportsInterface() public view {
-    assertTrue(robot.supportsInterface(type(IReceiver).interfaceId), 'IReceiver not supported');
-    assertTrue(
-      robot.supportsInterface(type(IAaveCREReceiver).interfaceId),
-      'IAaveCREReceiver not supported'
-    );
-    assertTrue(robot.supportsInterface(type(IERC165).interfaceId), 'IERC165 not supported');
-    assertFalse(robot.supportsInterface(0xffffffff), 'invalid interface id supported');
   }
 
   function test_checkUpkeep_returnsFalse_withoutCallingHub_whenNoAgentEnabled() public {
@@ -428,16 +413,6 @@ contract CapAgentReceiverTest is Test {
       abi.encodeWithSelector(ICapAgentReceiver.AgentStatusUnchanged.selector, 0, false)
     );
     robot.disableAgent(0);
-  }
-
-  function test_rescueGuardian_isOwner() public view {
-    assertEq(robot.rescueGuardian(), owner, 'rescue guardian is not the owner');
-  }
-
-  function test_rescueToken_revertsWith_OnlyRescueGuardian() public {
-    vm.prank(guardian);
-    vm.expectRevert(IRescuable.OnlyRescueGuardian.selector);
-    robot.rescueToken(makeAddr('token'), bob, 100);
   }
 
   function _mockCheckAgent(IAgentHub.ActionData memory action) internal {

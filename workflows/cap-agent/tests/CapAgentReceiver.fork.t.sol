@@ -14,6 +14,7 @@ import {MiscArbitrum} from 'aave-address-book/MiscArbitrum.sol';
 import {MiscBase} from 'aave-address-book/MiscBase.sol';
 import {MiscBNB} from 'aave-address-book/MiscBNB.sol';
 
+import {GovernanceOwners} from '../../shared/scripts/GovernanceOwners.sol';
 import {CapAgentReceiver} from '../src/CapAgentReceiver.sol';
 import {ICapAgentReceiver, IAgentHub} from '../src/ICapAgentReceiver.sol';
 import {DeployCapAgentReceiver} from '../scripts/DeployCapAgentReceiver.s.sol';
@@ -27,6 +28,7 @@ abstract contract CapAgentForkBase is Test {
   // Agent ids registered on every covered hub (see the deploy script).
   uint256 internal constant SUPPLY_CAP_AGENT = 0;
   uint256 internal constant BORROW_CAP_AGENT = 1;
+  uint256 internal constant RATE_STRATEGY_AGENT = 2;
 
   // Published caps are 1% above the current ones, well inside the agents' default range.
   uint256 internal constant CAP_INCREASE_BPS = 1_00;
@@ -294,9 +296,9 @@ contract CapAgentReceiverForkTest is CapAgentForkBase {
 
   function _agentIds() internal pure returns (uint256[] memory ids) {
     ids = new uint256[](3);
-    ids[0] = 0;
-    ids[1] = 1;
-    ids[2] = 2;
+    ids[0] = SUPPLY_CAP_AGENT;
+    ids[1] = BORROW_CAP_AGENT;
+    ids[2] = RATE_STRATEGY_AGENT;
   }
 }
 
@@ -331,6 +333,7 @@ contract CapAgentDeployScriptForkTest is CapAgentForkBase {
     vm.createSelectFork(chain);
     DeployCapAgentReceiver script = new DeployCapAgentReceiver();
     DeployCapAgentReceiver.DeployConfig memory config = script.getDeployConfig(block.chainid);
+    (address owner, address guardian) = GovernanceOwners.get(block.chainid);
     CapAgentReceiver receiver = CapAgentReceiver(script.run());
     IAgentHubConfig hub = IAgentHubConfig(config.agentHub);
 
@@ -340,13 +343,13 @@ contract CapAgentDeployScriptForkTest is CapAgentForkBase {
       config.agentHub,
       'legacy automation runs on another hub'
     );
-    assertEq(receiver.owner(), config.owner, 'unexpected owner');
-    assertEq(receiver.guardian(), config.guardian, 'unexpected guardian');
+    assertEq(receiver.owner(), owner, 'unexpected owner');
+    assertEq(receiver.guardian(), guardian, 'unexpected guardian');
     assertEq(receiver.getEnabledAgents(), config.agentIds, 'unexpected enabled agents');
     assertEq(hub.getAgentCount(), config.agentIds.length, 'hub agents not all covered');
 
-    _allowInjection(hub, SUPPLY_CAP_AGENT, config.owner);
-    _allowInjection(hub, BORROW_CAP_AGENT, config.owner);
+    _allowInjection(hub, SUPPLY_CAP_AGENT, owner);
+    _allowInjection(hub, BORROW_CAP_AGENT, owner);
     CapUpdate memory supply = _publishCapUpdate(hub, SUPPLY_CAP_AGENT);
     CapUpdate memory borrow = _publishCapUpdate(hub, BORROW_CAP_AGENT);
 
