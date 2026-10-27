@@ -11,7 +11,7 @@ Ethereum only (Umbrella is deployed on mainnet).
 ```
 slashing/
 ├── src/
-│   ├── SlashingReceiver.sol        # the robot — inherits IAaveCREReceiver, permissionless onReport
+│   ├── SlashingReceiver.sol        # the robot — inherits WorkflowsBase, permissionless onReport
 │   └── ISlashingReceiver.sol       # robot interface + minimal stake token interface
 ├── tests/
 │   ├── SlashingReceiver.t.sol      # unit tests (vm.mockCall against Umbrella / stake tokens)
@@ -25,7 +25,8 @@ slashing/
 
 ## On-chain behavior
 
-`SlashingReceiver` implements [`IAaveCREReceiver`](../shared/src/IAaveCREReceiver.sol):
+`SlashingReceiver` inherits [`WorkflowsBase`](../shared/src/WorkflowsBase.sol) and
+implements its `_checkUpkeep` / `_onReport`:
 
 - `checkUpkeep(_) → (needed, reserves[])` — read-only probe. Enumerates
   `UMBRELLA.getStkTokens()` and flags each stake token's reserve when it has a
@@ -48,14 +49,17 @@ it doesn't hold a slot.
 
 ### State and access control
 
-- `_disabled[reserve]` — reserves excluded from automation. Reserves are enabled by
-  default, so new Umbrella reserves are covered without any action.
-- `disableReserve(reserve)` — owner or guardian (emergency off-switch). Reverts
-  `ReserveStatusUnchanged` if already disabled.
+Owner / guardian, rescue (owner as rescue guardian), ERC165 and the global automation
+switch (`disableAutomation()` by the owner or guardian, `enableAutomation()` by the owner)
+come from `WorkflowsBase`. On top of it, single reserves can be excluded:
+
+- `_disabledReserves[reserve]` — reserves excluded from automation. Reserves are enabled
+  by default, so new Umbrella reserves are covered without any action.
 - `enableReserve(reserve)` — owner-only. Reverts `ReserveStatusUnchanged` if not
   disabled.
-- Both emit `ReserveDisabled(reserve, disabled)`.
-- The contract is `Rescuable`; the owner is the rescue guardian.
+- `disableReserve(reserve)` — owner or guardian. Reverts `ReserveStatusUnchanged` if
+  already disabled.
+- Both emit `ReserveDisabled(reserve, disabled)`; `isDisabled(reserve)` reads the status.
 
 ## Testing
 
@@ -79,8 +83,9 @@ Umbrella, for the amount the pending deficit grows by.
 ## Deployment
 
 `SlashingReceiver` deploys stand-alone. `DeploySlashingReceiver` wires
-`UmbrellaEthereum.UMBRELLA` and uses `GovernanceV3Ethereum.EXECUTOR_LVL_1` /
-`GOVERNANCE_GUARDIAN` as owner / guardian.
+`UmbrellaEthereum.UMBRELLA` and takes the owner / guardian from
+[`GovernanceOwners`](../shared/scripts/GovernanceOwners.sol) (Governance V3 short executor
+and guardian of the chain).
 
 ```bash
 # from repo root, with ACCOUNT_NAME=<your-keystore-name> in .env

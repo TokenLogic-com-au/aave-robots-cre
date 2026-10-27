@@ -5,12 +5,7 @@ import {Test, Vm} from 'forge-std/Test.sol';
 
 import {Ownable} from 'openzeppelin-contracts/contracts/access/Ownable.sol';
 import {IWithGuardian} from 'solidity-utils/contracts/access-control/interfaces/IWithGuardian.sol';
-import {IERC165} from 'openzeppelin-contracts/contracts/utils/introspection/IERC165.sol';
-import {IRescuable} from 'aave-v4/interfaces/IRescuable.sol';
 import {IUmbrella, IUmbrellaConfiguration} from 'aave-address-book/common/IUmbrella.sol';
-
-import {IReceiver} from 'aave-cre/IReceiver.sol';
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
 
 import {SlashingReceiver} from '../src/SlashingReceiver.sol';
 import {ISlashingReceiver, IUmbrellaStakeToken} from '../src/ISlashingReceiver.sol';
@@ -60,16 +55,6 @@ contract SlashingReceiverTest is Test {
 
   function test_MAX_CHECK_SIZE_isTen() public view {
     assertEq(robot.MAX_CHECK_SIZE(), 10, 'unexpected MAX_CHECK_SIZE');
-  }
-
-  function test_supportsInterface() public view {
-    assertTrue(robot.supportsInterface(type(IReceiver).interfaceId), 'IReceiver not supported');
-    assertTrue(
-      robot.supportsInterface(type(IAaveCREReceiver).interfaceId),
-      'IAaveCREReceiver not supported'
-    );
-    assertTrue(robot.supportsInterface(type(IERC165).interfaceId), 'IERC165 not supported');
-    assertFalse(robot.supportsInterface(0xffffffff), 'invalid interface id supported');
   }
 
   function test_checkUpkeep_returnsFalse_whenNoStkTokens() public {
@@ -302,16 +287,6 @@ contract SlashingReceiverTest is Test {
       abi.encodeWithSelector(ISlashingReceiver.ReserveStatusUnchanged.selector, reserveA, false)
     );
     robot.enableReserve(reserveA);
-  }
-
-  function test_rescueGuardian_isOwner() public view {
-    assertEq(robot.rescueGuardian(), owner, 'rescue guardian is not the owner');
-  }
-
-  function test_rescueToken_revertsWith_OnlyRescueGuardian() public {
-    vm.prank(guardian);
-    vm.expectRevert(IRescuable.OnlyRescueGuardian.selector);
-    robot.rescueToken(makeAddr('token'), bob, 100);
   }
 
   struct StakeSetup {
