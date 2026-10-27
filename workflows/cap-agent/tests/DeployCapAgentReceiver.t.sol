@@ -41,8 +41,6 @@ contract DeployCapAgentReceiverTest is Test {
       string memory chain = vm.toString(supported[i]);
 
       assertTrue(config.agentHub != address(0), string.concat(chain, ': agent hub is zero'));
-      assertTrue(config.owner != address(0), string.concat(chain, ': owner is zero'));
-      assertTrue(config.guardian != address(0), string.concat(chain, ': guardian is zero'));
       assertGt(config.agentIds.length, 0, string.concat(chain, ': no agents'));
       for (uint256 j = 0; j < config.agentIds.length; j++) {
         assertEq(config.agentIds[j], j, string.concat(chain, ': agent ids not sequential'));

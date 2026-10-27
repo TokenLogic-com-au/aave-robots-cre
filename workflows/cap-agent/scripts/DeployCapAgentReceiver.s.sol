@@ -1,15 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {Script, console} from 'forge-std/Script.sol';
+import {Script} from 'forge-std/Script.sol';
 
 import {ChainIds} from 'solidity-utils/contracts/utils/ChainHelpers.sol';
-import {GovernanceV3Avalanche} from 'aave-address-book/GovernanceV3Avalanche.sol';
-import {GovernanceV3Polygon} from 'aave-address-book/GovernanceV3Polygon.sol';
-import {GovernanceV3Optimism} from 'aave-address-book/GovernanceV3Optimism.sol';
-import {GovernanceV3Arbitrum} from 'aave-address-book/GovernanceV3Arbitrum.sol';
-import {GovernanceV3Base} from 'aave-address-book/GovernanceV3Base.sol';
-import {GovernanceV3BNB} from 'aave-address-book/GovernanceV3BNB.sol';
 import {MiscAvalanche} from 'aave-address-book/MiscAvalanche.sol';
 import {MiscPolygon} from 'aave-address-book/MiscPolygon.sol';
 import {MiscOptimism} from 'aave-address-book/MiscOptimism.sol';
@@ -17,91 +11,57 @@ import {MiscArbitrum} from 'aave-address-book/MiscArbitrum.sol';
 import {MiscBase} from 'aave-address-book/MiscBase.sol';
 import {MiscBNB} from 'aave-address-book/MiscBNB.sol';
 
+import {GovernanceOwners} from '../../shared/scripts/GovernanceOwners.sol';
 import {CapAgentReceiver} from '../src/CapAgentReceiver.sol';
 
 // make deploy-cap-agent env=<Avalanche|Polygon|Optimism|Arbitrum|Base|BNB> [dry=1]
 contract DeployCapAgentReceiver is Script {
+  // Agents 0 (supply cap) and 1 (borrow cap), registered on every covered hub.
+  uint256 internal constant CAP_AGENTS = 2;
+  // Plus agent 2 (rate strategy), registered on Avalanche, Arbitrum and Base.
+  uint256 internal constant CAP_AND_RATE_AGENTS = 3;
+
   struct DeployConfig {
     address agentHub;
-    address owner;
-    address guardian;
     uint256[] agentIds;
   }
 
   function run() external returns (address) {
     DeployConfig memory config = getDeployConfig(block.chainid);
     require(config.agentHub.code.length > 0, 'agent hub not deployed on this chain');
+    (address owner, address guardian) = GovernanceOwners.get(block.chainid);
 
     vm.startBroadcast();
     CapAgentReceiver receiver = new CapAgentReceiver(
       config.agentHub,
-      config.owner,
-      config.guardian,
+      owner,
+      guardian,
       config.agentIds
     );
     vm.stopBroadcast();
 
-    console.log('CapAgentReceiver deployed at:', address(receiver));
-    console.log('AgentHub:', config.agentHub);
-    console.log('Owner:', config.owner);
-    console.log('Guardian:', config.guardian);
-    for (uint256 i = 0; i < config.agentIds.length; i++) {
-      console.log('Enabled agent:', config.agentIds[i]);
-    }
     return address(receiver);
   }
 
-  /// @dev Agents: supply and borrow caps everywhere, plus rate strategies on Avalanche,
-  /// Arbitrum and Base. Owner / guardian are the chain's governance executor and guardian.
   function getDeployConfig(uint256 chainId) public pure returns (DeployConfig memory) {
-    if (chainId == ChainIds.AVALANCHE)
-      return
-        DeployConfig(
-          MiscAvalanche.AGENT_HUB,
-          GovernanceV3Avalanche.EXECUTOR_LVL_1,
-          GovernanceV3Avalanche.GOVERNANCE_GUARDIAN,
-          _ids(3)
-        );
-    if (chainId == ChainIds.POLYGON)
-      return
-        DeployConfig(
-          MiscPolygon.AGENT_HUB,
-          GovernanceV3Polygon.EXECUTOR_LVL_1,
-          GovernanceV3Polygon.GOVERNANCE_GUARDIAN,
-          _ids(2)
-        );
-    if (chainId == ChainIds.OPTIMISM)
-      return
-        DeployConfig(
-          MiscOptimism.AGENT_HUB,
-          GovernanceV3Optimism.EXECUTOR_LVL_1,
-          GovernanceV3Optimism.GOVERNANCE_GUARDIAN,
-          _ids(2)
-        );
-    if (chainId == ChainIds.ARBITRUM)
-      return
-        DeployConfig(
-          MiscArbitrum.AGENT_HUB,
-          GovernanceV3Arbitrum.EXECUTOR_LVL_1,
-          GovernanceV3Arbitrum.GOVERNANCE_GUARDIAN,
-          _ids(3)
-        );
-    if (chainId == ChainIds.BASE)
-      return
-        DeployConfig(
-          MiscBase.AGENT_HUB,
-          GovernanceV3Base.EXECUTOR_LVL_1,
-          GovernanceV3Base.GOVERNANCE_GUARDIAN,
-          _ids(3)
-        );
-    if (chainId == ChainIds.BNB)
-      return
-        DeployConfig(
-          MiscBNB.AGENT_HUB,
-          GovernanceV3BNB.EXECUTOR_LVL_1,
-          GovernanceV3BNB.GOVERNANCE_GUARDIAN,
-          _ids(2)
-        );
+    if (chainId == ChainIds.AVALANCHE) {
+      return DeployConfig(MiscAvalanche.AGENT_HUB, _ids(CAP_AND_RATE_AGENTS));
+    }
+    if (chainId == ChainIds.POLYGON) {
+      return DeployConfig(MiscPolygon.AGENT_HUB, _ids(CAP_AGENTS));
+    }
+    if (chainId == ChainIds.OPTIMISM) {
+      return DeployConfig(MiscOptimism.AGENT_HUB, _ids(CAP_AGENTS));
+    }
+    if (chainId == ChainIds.ARBITRUM) {
+      return DeployConfig(MiscArbitrum.AGENT_HUB, _ids(CAP_AND_RATE_AGENTS));
+    }
+    if (chainId == ChainIds.BASE) {
+      return DeployConfig(MiscBase.AGENT_HUB, _ids(CAP_AND_RATE_AGENTS));
+    }
+    if (chainId == ChainIds.BNB) {
+      return DeployConfig(MiscBNB.AGENT_HUB, _ids(CAP_AGENTS));
+    }
     revert('unsupported chain');
   }
 
