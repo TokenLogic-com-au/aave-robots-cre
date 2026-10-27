@@ -3,14 +3,10 @@ pragma solidity ^0.8.0;
 
 import {Test} from 'forge-std/Test.sol';
 
-import {IWithGuardian} from 'solidity-utils/contracts/access-control/interfaces/IWithGuardian.sol';
-import {IERC165} from 'openzeppelin-contracts/contracts/utils/introspection/IERC165.sol';
-
-import {IReceiver} from 'aave-cre/IReceiver.sol';
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
+import {IWorkflowsBase} from 'aave-cre/IWorkflowsBase.sol';
 
 import {GsmFeeClaimerReceiver} from '../src/GsmFeeClaimerReceiver.sol';
-import {IGsmFeeClaimerReceiver, IGsmFees} from '../src/IGsmFeeClaimerReceiver.sol';
+import {IGsmFees} from '../src/IGsmFeeClaimerReceiver.sol';
 
 contract GsmFeeClaimerReceiverTest is Test {
   uint256 internal constant MIN_FEES = 1000e18;
@@ -19,7 +15,6 @@ contract GsmFeeClaimerReceiverTest is Test {
 
   address internal owner;
   address internal guardian;
-  address internal bob;
   address internal anyone;
 
   address internal gsmA;
@@ -28,7 +23,6 @@ contract GsmFeeClaimerReceiverTest is Test {
   function setUp() public {
     owner = makeAddr('owner');
     guardian = makeAddr('guardian');
-    bob = makeAddr('bob');
     anyone = makeAddr('anyone');
     gsmA = makeAddr('gsmA');
     gsmB = makeAddr('gsmB');
@@ -40,16 +34,6 @@ contract GsmFeeClaimerReceiverTest is Test {
     assertEq(robot.owner(), owner, 'owner not set');
     assertEq(robot.guardian(), guardian, 'guardian not set');
     assertFalse(robot.isDisabled(), 'should start enabled');
-  }
-
-  function test_supportsInterface() public view {
-    assertTrue(robot.supportsInterface(type(IReceiver).interfaceId), 'IReceiver unsupported');
-    assertTrue(
-      robot.supportsInterface(type(IAaveCREReceiver).interfaceId),
-      'IAaveCREReceiver unsupported'
-    );
-    assertTrue(robot.supportsInterface(type(IERC165).interfaceId), 'IERC165 unsupported');
-    assertFalse(robot.supportsInterface(0xffffffff), 'invalid interface reported supported');
   }
 
   function test_checkUpkeep_returnsFalse_whenCheckDataEmpty() public view {
@@ -129,8 +113,8 @@ contract GsmFeeClaimerReceiverTest is Test {
 
   function test_checkUpkeep_returnsFalse_whenDisabled() public {
     _mockFees(gsmA, 5e18);
-    vm.prank(owner);
-    robot.setDisabled(true);
+    vm.prank(guardian);
+    robot.disableAutomation();
     (bool needed, bytes memory performData) = robot.checkUpkeep(_checkData(gsmA, gsmB, 0));
     assertFalse(needed, 'upkeep needed while disabled');
     assertEq(performData, '', 'performData should be empty');
@@ -182,65 +166,29 @@ contract GsmFeeClaimerReceiverTest is Test {
     robot.onReport('', _report(gsmA, gsmB));
   }
 
-  function test_onReport_revertsWith_Disabled() public {
+  function test_onReport_revertsWith_AutomationIsDisabled() public {
     _mockDistribute(gsmA);
     vm.prank(guardian);
-    robot.setDisabled(true);
+    robot.disableAutomation();
 
     vm.prank(anyone);
-    vm.expectRevert(IGsmFeeClaimerReceiver.Disabled.selector);
+    vm.expectRevert(IWorkflowsBase.AutomationIsDisabled.selector);
     robot.onReport('', _report(gsmA, gsmB));
   }
 
-  function test_setDisabled_byOwner() public {
-    vm.expectEmit(address(robot));
-    emit IGsmFeeClaimerReceiver.AutomationDisabled(true);
-
-    vm.prank(owner);
-    robot.setDisabled(true);
-    assertTrue(robot.isDisabled(), 'not disabled by owner');
-  }
-
-  function test_setDisabled_byGuardian() public {
-    vm.prank(guardian);
-    robot.setDisabled(true);
-    assertTrue(robot.isDisabled(), 'not disabled by guardian');
-  }
-
-  function test_setDisabled_false_resumesAutomation() public {
+  function test_enableAutomation_resumesUpkeepAndReports() public {
     _mockFees(gsmA, 5e18);
     _mockDistribute(gsmA);
-    vm.startPrank(owner);
-    robot.setDisabled(true);
-    robot.setDisabled(false);
-    vm.stopPrank();
+    vm.prank(guardian);
+    robot.disableAutomation();
+    vm.prank(owner);
+    robot.enableAutomation();
     assertFalse(robot.isDisabled(), 'still disabled');
 
     (bool needed, ) = robot.checkUpkeep(_checkData(gsmA, gsmB, 0));
     assertTrue(needed, 'upkeep not resumed');
     vm.prank(anyone);
     robot.onReport('', _report(gsmA, gsmA));
-  }
-
-  function test_setDisabled_revertsWith_NotOwnerOrGuardian() public {
-    vm.prank(bob);
-    vm.expectRevert(
-      abi.encodeWithSelector(IWithGuardian.OnlyGuardianOrOwnerInvalidCaller.selector, bob)
-    );
-    robot.setDisabled(true);
-  }
-
-  function test_setDisabled_revertsWith_StateUnchanged_whenSameValue() public {
-    vm.prank(owner);
-    vm.expectRevert(IGsmFeeClaimerReceiver.StateUnchanged.selector);
-    robot.setDisabled(false);
-
-    vm.prank(owner);
-    robot.setDisabled(true);
-
-    vm.prank(guardian);
-    vm.expectRevert(IGsmFeeClaimerReceiver.StateUnchanged.selector);
-    robot.setDisabled(true);
   }
 
   function _checkData(address a, address b, uint256 minFees) internal pure returns (bytes memory) {

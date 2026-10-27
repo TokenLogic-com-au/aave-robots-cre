@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {OwnableWithGuardian} from 'solidity-utils/contracts/access-control/OwnableWithGuardian.sol';
-import {IERC165} from 'openzeppelin-contracts/contracts/utils/introspection/IERC165.sol';
-
-import {IReceiver} from 'aave-cre/IReceiver.sol';
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
+import {WorkflowsBase} from 'aave-cre/WorkflowsBase.sol';
 import {IGsmFeeClaimerReceiver, IGsmFees} from './IGsmFeeClaimerReceiver.sol';
 
 /// @title GsmFeeClaimerReceiver
@@ -13,23 +9,30 @@ import {IGsmFeeClaimerReceiver, IGsmFees} from './IGsmFeeClaimerReceiver.sol';
 /// @notice Receives reports from the CRE workflow and sends accrued GSM fees to the
 /// GHO treasury.
 /// @dev `onReport` is permissionless, like `distributeFeesToTreasury` itself, and the
-/// GSM emits the authoritative `FeesDistributedToTreasury` event. The contract never
-/// holds tokens (the GSM pays the treasury directly), so it is not `Rescuable`.
-contract GsmFeeClaimerReceiver is IGsmFeeClaimerReceiver, OwnableWithGuardian {
-  bool internal _disabled;
+/// GSM emits the authoritative `FeesDistributedToTreasury` event.
+contract GsmFeeClaimerReceiver is IGsmFeeClaimerReceiver, WorkflowsBase {
+  /// @dev Size of the ABI-encoded `getAccruedFees` return value.
+  uint256 internal constant FEES_RETURN_LENGTH = 32;
 
   /// @param initialOwner_ The address of the initial owner.
   /// @param initialGuardian_ The address of the initial guardian.
   constructor(
     address initialOwner_,
     address initialGuardian_
-  ) OwnableWithGuardian(initialOwner_, initialGuardian_) {}
+  ) WorkflowsBase(initialOwner_, initialGuardian_) {}
 
-  /// @inheritdoc IAaveCREReceiver
-  function checkUpkeep(
+  /// @dev A reverting GSM reverts the whole report; the workflow's gas estimate skips it.
+  function _onReport(bytes calldata /* metadata */, bytes calldata report) internal override {
+    address[] memory gsms = abi.decode(report, (address[]));
+    for (uint256 i = 0; i < gsms.length; i++) {
+      IGsmFees(gsms[i]).distributeFeesToTreasury();
+    }
+  }
+
+  function _checkUpkeep(
     bytes calldata checkData
-  ) external view returns (bool upkeepNeeded, bytes memory performData) {
-    if (_disabled || checkData.length == 0) return (false, '');
+  ) internal view override returns (bool upkeepNeeded, bytes memory performData) {
+    if (checkData.length == 0) return (false, '');
     (address[] memory gsms, uint256 minFees) = abi.decode(checkData, (address[], uint256));
 
     address[] memory buffer = new address[](gsms.length);
@@ -45,41 +48,11 @@ contract GsmFeeClaimerReceiver is IGsmFeeClaimerReceiver, OwnableWithGuardian {
     return (true, abi.encode(withFees));
   }
 
-  /// @inheritdoc IReceiver
-  /// @dev A reverting GSM reverts the whole report; the workflow's gas estimate skips it.
-  function onReport(bytes calldata /* metadata */, bytes calldata report) external override {
-    if (_disabled) revert Disabled();
-    address[] memory gsms = abi.decode(report, (address[]));
-    for (uint256 i = 0; i < gsms.length; i++) {
-      IGsmFees(gsms[i]).distributeFeesToTreasury();
-    }
-  }
-
-  /// @inheritdoc IGsmFeeClaimerReceiver
-  function isDisabled() public view returns (bool) {
-    return _disabled;
-  }
-
-  /// @inheritdoc IGsmFeeClaimerReceiver
-  function setDisabled(bool disabled) external onlyOwnerOrGuardian {
-    require(_disabled != disabled, StateUnchanged());
-    _disabled = disabled;
-    emit AutomationDisabled(disabled);
-  }
-
-  /// @inheritdoc IERC165
-  function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
-    return
-      interfaceId == type(IReceiver).interfaceId ||
-      interfaceId == type(IAaveCREReceiver).interfaceId ||
-      interfaceId == type(IERC165).interfaceId;
-  }
-
   /// @dev A GSM that reverts, has no code or returns no data is treated as having no
   /// fees, so one bad entry in `checkData` cannot block the others. A low-level call is
   /// used because `try` only catches reverts inside the callee, not a failed decode.
   function _accruedFees(address gsm) internal view returns (uint256) {
     (bool ok, bytes memory data) = gsm.staticcall(abi.encodeCall(IGsmFees.getAccruedFees, ()));
-    return ok && data.length == 32 ? abi.decode(data, (uint256)) : 0;
+    return ok && data.length == FEES_RETURN_LENGTH ? abi.decode(data, (uint256)) : 0;
   }
 }

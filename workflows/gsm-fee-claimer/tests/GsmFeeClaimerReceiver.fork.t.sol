@@ -6,9 +6,12 @@ import {Test, Vm} from 'forge-std/Test.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 import {GhoEthereum} from 'aave-address-book/GhoEthereum.sol';
+import {GhoPlasma} from 'aave-address-book/GhoPlasma.sol';
 
 import {GsmFeeClaimerReceiver} from '../src/GsmFeeClaimerReceiver.sol';
 import {IGsmFees} from '../src/IGsmFeeClaimerReceiver.sol';
+import {DeployGsmFeeClaimerReceiver} from '../scripts/DeployGsmFeeClaimerReceiver.s.sol';
+import {GovernanceOwners} from '../../shared/scripts/GovernanceOwners.sol';
 
 interface IGsmTreasury {
   function getGhoTreasury() external view returns (address);
@@ -97,5 +100,43 @@ contract GsmFeeClaimerReceiverForkTest is Test {
     assertEq(gho.balanceOf(treasury), treasuryAfter, 'replay moved funds');
     (needed, ) = robot.checkUpkeep(abi.encode(gsms, MIN_FEES));
     assertFalse(needed, 'upkeep still needed after distributing');
+  }
+}
+
+/// Deploys through the script on every other supported chain and probes its live GSM.
+contract GsmFeeClaimerDeployScriptForkTest is Test {
+  // Not in the pinned address book yet; values from offchain/config.production.json.
+  address internal constant ARBITRUM_GSM_USDT = 0x53E0cE250d06043414070100458546AaF4e284eD;
+  address internal constant MONAD_GSM_USDC = 0x3Cf3779EEf770931543ACd2C7f6ECd1b37E35caB;
+
+  function test_fork_arbitrum_deployScriptReadsGsm() public {
+    vm.skip(!vm.envExists('RPC_ARBITRUM'), 'RPC_ARBITRUM not set');
+    _deployAndCheck('arbitrum', ARBITRUM_GSM_USDT);
+  }
+
+  function test_fork_plasma_deployScriptReadsGsm() public {
+    vm.skip(!vm.envExists('RPC_PLASMA'), 'RPC_PLASMA not set');
+    _deployAndCheck('plasma', GhoPlasma.GSM_USDT);
+  }
+
+  /// Forking Monad needs forge's Monad EVM, which only `--network monad` selects.
+  function test_fork_monad_deployScriptReadsGsm() public {
+    vm.skip(!vm.envOr('FORK_MONAD', false), 'set FORK_MONAD=true and run with --network monad');
+    _deployAndCheck('monad', MONAD_GSM_USDC);
+  }
+
+  function _deployAndCheck(string memory chain, address gsm) internal {
+    vm.createSelectFork(chain);
+    GsmFeeClaimerReceiver robot = GsmFeeClaimerReceiver(new DeployGsmFeeClaimerReceiver().run());
+    (address owner, address guardian) = GovernanceOwners.get(block.chainid);
+    assertEq(robot.owner(), owner, 'unexpected owner');
+    assertEq(robot.guardian(), guardian, 'unexpected guardian');
+
+    address[] memory gsms = new address[](1);
+    gsms[0] = gsm;
+    uint256 fees = IGsmFees(gsm).getAccruedFees();
+    (bool needed, bytes memory performData) = robot.checkUpkeep(abi.encode(gsms, fees));
+    assertEq(needed, fees > 0, 'upkeep decision does not match the live fees');
+    if (needed) assertEq(performData, abi.encode(gsms), 'unexpected performData');
   }
 }
