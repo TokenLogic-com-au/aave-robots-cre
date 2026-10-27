@@ -1,14 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {OwnableWithGuardian} from 'solidity-utils/contracts/access-control/OwnableWithGuardian.sol';
-import {IERC165} from 'openzeppelin-contracts/contracts/utils/introspection/IERC165.sol';
-import {Rescuable} from 'aave-v4/utils/Rescuable.sol';
 import {IPoolAddressesProvider} from 'aave-v3-origin/contracts/interfaces/IPoolAddressesProvider.sol';
 import {IPriceOracleGetter} from 'aave-v3-origin/contracts/interfaces/IPriceOracleGetter.sol';
 
-import {IReceiver} from 'aave-cre/IReceiver.sol';
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
+import {WorkflowsBase} from 'aave-cre/WorkflowsBase.sol';
 import {IGsmFreezerReceiver, IGsm} from './IGsmFreezerReceiver.sol';
 
 /// @title GsmFreezerReceiver
@@ -19,7 +15,7 @@ import {IGsmFreezerReceiver, IGsm} from './IGsmFreezerReceiver.sol';
 /// @dev Must hold `SWAP_FREEZER_ROLE` on the GSM. `onReport` is permissionless, unfreezing
 /// included, so a manual freeze made while the price is in the unfreeze band needs
 /// `disableAutomation()` to stick.
-contract GsmFreezerReceiver is IGsmFreezerReceiver, OwnableWithGuardian, Rescuable {
+contract GsmFreezerReceiver is IGsmFreezerReceiver, WorkflowsBase {
   /// @inheritdoc IGsmFreezerReceiver
   IGsm public immutable override GSM;
 
@@ -44,8 +40,6 @@ contract GsmFreezerReceiver is IGsmFreezerReceiver, OwnableWithGuardian, Rescuab
   /// @inheritdoc IGsmFreezerReceiver
   bool public immutable override ALLOW_UNFREEZE;
 
-  bool internal _disabled;
-
   /// @param gsm_ The GSM to freeze.
   /// @param underlyingAsset_ The asset priced for the freeze decision.
   /// @param addressProvider_ The Aave V3 addresses provider resolving the price oracle.
@@ -61,12 +55,13 @@ contract GsmFreezerReceiver is IGsmFreezerReceiver, OwnableWithGuardian, Rescuab
     bool allowUnfreeze_,
     address initialOwner_,
     address initialGuardian_
-  ) OwnableWithGuardian(initialOwner_, initialGuardian_) {
+  ) WorkflowsBase(initialOwner_, initialGuardian_) {
     require(
       gsm_ != address(0) && underlyingAsset_ != address(0) && addressProvider_ != address(0),
       InvalidAddress()
     );
     require(_validateBounds(bounds_, allowUnfreeze_), InvalidBounds());
+
     GSM = IGsm(gsm_);
     UNDERLYING_ASSET = underlyingAsset_;
     ADDRESS_PROVIDER = IPoolAddressesProvider(addressProvider_);
@@ -77,59 +72,29 @@ contract GsmFreezerReceiver is IGsmFreezerReceiver, OwnableWithGuardian, Rescuab
     ALLOW_UNFREEZE = allowUnfreeze_;
   }
 
-  /// @inheritdoc IGsmFreezerReceiver
-  function disableAutomation() external onlyOwnerOrGuardian {
-    require(!_disabled, AutomationStatusUnchanged(true));
-    _disabled = true;
-    emit AutomationDisabled(true);
-  }
-
-  /// @inheritdoc IGsmFreezerReceiver
-  function enableAutomation() external onlyOwner {
-    require(_disabled, AutomationStatusUnchanged(false));
-    _disabled = false;
-    emit AutomationDisabled(false);
-  }
-
-  /// @inheritdoc IAaveCREReceiver
-  function checkUpkeep(
-    bytes calldata /* checkData */
-  ) external view returns (bool upkeepNeeded, bytes memory performData) {
-    Action action = _getAction();
-    if (action == Action.NONE) return (false, '');
-    return (true, abi.encode(action));
-  }
-
-  /// @inheritdoc IReceiver
   /// @dev Ignores the report and derives the action from live state. Reverts
   /// `NoActionPossible` when there is nothing to do, so a stale report fails `estimateGas`.
-  function onReport(bytes calldata /* metadata */, bytes calldata /* report */) external override {
+  function _onReport(bytes calldata /* metadata */, bytes calldata /* report */) internal override {
     Action action = _getAction();
     require(action != Action.NONE, NoActionPossible());
+
     bool freeze = action == Action.FREEZE;
     GSM.setSwapFreeze(freeze);
     emit SwapFreezeSet(freeze);
   }
 
-  /// @inheritdoc IGsmFreezerReceiver
-  function isDisabled() external view returns (bool) {
-    return _disabled;
-  }
-
-  /// @inheritdoc IERC165
-  function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
-    return
-      interfaceId == type(IReceiver).interfaceId ||
-      interfaceId == type(IAaveCREReceiver).interfaceId ||
-      interfaceId == type(IERC165).interfaceId;
+  function _checkUpkeep(
+    bytes calldata /* checkData */
+  ) internal view override returns (bool, bytes memory) {
+    Action action = _getAction();
+    if (action == Action.NONE) return (false, '');
+    return (true, abi.encode(action));
   }
 
   /// @dev Same decision as `OracleSwapFreezer`: freeze when the price leaves the freeze
-  /// band, unfreeze when it is back in the unfreeze band. `NONE` when disabled, without the
-  /// role, once the GSM is seized, or on a zero price. The oracle is only read when an
-  /// action is possible.
+  /// band, unfreeze when it is back in the unfreeze band. `NONE` without the role, once the
+  /// GSM is seized, or on a zero price. The oracle is only read when an action is possible.
   function _getAction() internal view returns (Action) {
-    if (_disabled) return Action.NONE;
     if (!GSM.hasRole(GSM.SWAP_FREEZER_ROLE(), address(this))) return Action.NONE;
     if (GSM.getIsSeized()) return Action.NONE;
 
@@ -159,10 +124,5 @@ contract GsmFreezerReceiver is IGsmFreezerReceiver, OwnableWithGuardian, Rescuab
       b.unfreezeLowerBound < b.unfreezeUpperBound &&
       b.freezeLowerBound < b.unfreezeLowerBound &&
       b.unfreezeUpperBound < b.freezeUpperBound;
-  }
-
-  /// @inheritdoc Rescuable
-  function _rescueGuardian() internal view override returns (address) {
-    return owner();
   }
 }

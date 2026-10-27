@@ -12,7 +12,7 @@ none, its only GSM is seized.
 ```
 gsm-freezer/
 ├── src/
-│   ├── GsmFreezerReceiver.sol        # the robot — inherits IAaveCREReceiver, permissionless onReport
+│   ├── GsmFreezerReceiver.sol        # the robot — inherits WorkflowsBase, permissionless onReport
 │   └── IGsmFreezerReceiver.sol       # robot interface + minimal IGsm interface
 ├── tests/
 │   ├── GsmFreezerReceiver.t.sol      # unit tests (vm.mockCall against the GSM / oracle)
@@ -24,8 +24,8 @@ gsm-freezer/
 
 ## On-chain behavior
 
-`GsmFreezerReceiver` implements [`IAaveCREReceiver`](../shared/src/IAaveCREReceiver.sol),
-with the same decision logic as `OracleSwapFreezer`:
+`GsmFreezerReceiver` inherits [`WorkflowsBase`](../shared/src/WorkflowsBase.sol), with the
+same decision logic as `OracleSwapFreezer`:
 
 - `checkUpkeep(_) → (needed, action)` — read-only probe. Returns `FREEZE` when the GSM
   is not frozen and the Aave V3 oracle price of the underlying (8-decimal USD) is
@@ -34,7 +34,8 @@ with the same decision logic as `OracleSwapFreezer`:
 unfreezeUpperBound]`. Nothing while the robot lacks `SWAP_FREEZER_ROLE`, the GSM is
   seized, the price is 0 or automation is disabled.
 - `onReport(metadata, _)` — ignores the report, derives the same action from live state
-  and calls `GSM.setSwapFreeze`. Reverts `NoActionPossible` if nothing applies.
+  and calls `GSM.setSwapFreeze`. Reverts `AutomationIsDisabled` while automation is
+  disabled and `NoActionPossible` if nothing applies.
 
 Bounds follow `OracleSwapFreezer`: inclusive, unfreeze band nested in the freeze band,
 and both unfreeze bounds 0 when `allowUnfreeze` is false. The deploy script uses the
@@ -45,16 +46,11 @@ same values as the live freezers: freeze outside `[0.99, 1.01]`, unfreeze inside
 That includes unfreezing, so a manual freeze made while the price is in the unfreeze
 band needs `disableAutomation()` to stick.
 
-### State and access control
+### Access control
 
-- `_disabled` — excludes the robot from automation (`checkUpkeep` and `onReport` stand
-  down).
-- `disableAutomation()` — owner or guardian (emergency off-switch). Reverts
-  `AutomationStatusUnchanged` if already disabled.
-- `enableAutomation()` — owner-only. Reverts `AutomationStatusUnchanged` if not
-  disabled.
-- Both emit `AutomationDisabled(disabled)`.
-- The contract is `Rescuable`; the owner is the rescue guardian.
+Owner / guardian, the global automation switch (`disableAutomation()` by owner or
+guardian, `enableAutomation()` by owner) and token rescue (owner) come from
+`WorkflowsBase`; see the [root README](../../README.md).
 
 ## Testing
 
@@ -82,8 +78,9 @@ skipped without `RPC_PLASMA`; the Monad case only runs with `FORK_MONAD=true` an
 `GsmFreezerReceiver` deploys stand-alone, one instance per GSM.
 `DeployGsmFreezerReceiver` picks the chain from `block.chainid` and deploys a freezer for
 every GSM on it, with that chain's `EXECUTOR_LVL_1` / `GOVERNANCE_GUARDIAN` as owner /
-guardian. Addresses come from `aave-address-book`, except Monad, which the pinned version
-doesn't include yet.
+guardian (from [`GovernanceOwners`](../shared/scripts/GovernanceOwners.sol)). Addresses
+come from `aave-address-book`, except Monad, which the pinned version doesn't include
+yet.
 
 ```bash
 # from repo root, with ACCOUNT_NAME=<your-keystore-name> in .env
