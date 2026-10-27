@@ -55,6 +55,12 @@ jobs:
       - name: Install shared offchain deps
         working-directory: workflows/shared/offchain
         run: npm ci
+      - name: Typecheck shared
+        working-directory: workflows/shared/offchain
+        run: npm run typecheck
+      - name: Shared offchain tests
+        working-directory: workflows/shared/offchain
+        run: bun test
       - name: Install workflow deps
         working-directory: workflows/fee-shares-minter/offchain
         run: npm ci

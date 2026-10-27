@@ -11,6 +11,9 @@ gas-snapshot :; forge snapshot --match-contract 'FeeSharesMinter'
 
 generate-abis :; npm run generate-abis
 
+typecheck-shared :; cd workflows/shared/offchain && npm run typecheck
+test-offchain-shared :; cd workflows/shared/offchain && npm test
+
 typecheck-fee-shares-minter :; cd workflows/fee-shares-minter/offchain && npm run typecheck
 test-offchain-fee-shares-minter :; cd workflows/fee-shares-minter/offchain && npm test
 
