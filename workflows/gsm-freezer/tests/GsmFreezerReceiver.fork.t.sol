@@ -9,16 +9,19 @@ import {GovernanceV3Ethereum} from 'aave-address-book/GovernanceV3Ethereum.sol';
 import {GhoEthereum} from 'aave-address-book/GhoEthereum.sol';
 import {AaveV3Ethereum, AaveV3EthereumAssets} from 'aave-address-book/AaveV3Ethereum.sol';
 
-import {GsmFreezerReceiver} from '../src/GsmFreezerReceiver.sol';
 import {IPoolAddressesProvider} from 'aave-v3-origin/contracts/interfaces/IPoolAddressesProvider.sol';
 import {IPriceOracleGetter} from 'aave-v3-origin/contracts/interfaces/IPriceOracleGetter.sol';
 
+import {GovernanceOwners} from '../../shared/scripts/GovernanceOwners.sol';
+import {GsmFreezerReceiver} from '../src/GsmFreezerReceiver.sol';
 import {IGsmFreezerReceiver, IGsm} from '../src/IGsmFreezerReceiver.sol';
 import {DeployGsmFreezerReceiver} from '../scripts/DeployGsmFreezerReceiver.s.sol';
 
 contract GsmFreezerReceiverForkTest is Test {
   address internal constant GSM = GhoEthereum.GSM_USDC;
   address internal constant UNDERLYING = AaveV3EthereumAssets.USDC_UNDERLYING;
+  uint256 internal constant PEG_PRICE = 1e8;
+  uint256 internal constant DEPEGGED_PRICE = 0.90e8;
 
   GsmFreezerReceiver internal robot;
   address internal owner = makeAddr('owner');
@@ -31,13 +34,8 @@ contract GsmFreezerReceiverForkTest is Test {
       GSM,
       UNDERLYING,
       address(AaveV3Ethereum.POOL_ADDRESSES_PROVIDER),
-      IGsmFreezerReceiver.Bounds({
-        freezeLowerBound: 0.99e8,
-        freezeUpperBound: 1.01e8,
-        unfreezeLowerBound: 0.995e8,
-        unfreezeUpperBound: 1.005e8
-      }),
-      true,
+      new DeployGsmFreezerReceiver().pegBounds(),
+      true, // allowUnfreeze
       owner,
       guardian
     );
@@ -58,7 +56,7 @@ contract GsmFreezerReceiverForkTest is Test {
 
   function test_fork_onReport_freezesRealGsm_whenDepegged() public {
     _grantFreezerRole();
-    _mockPrice(0.90e8);
+    _mockPrice(DEPEGGED_PRICE);
 
     (bool needed, bytes memory performData) = robot.checkUpkeep('');
     assertTrue(needed, 'upkeep should be needed');
@@ -76,12 +74,12 @@ contract GsmFreezerReceiverForkTest is Test {
 
   function test_fork_onReport_unfreezesRealGsm_whenRecovered() public {
     _grantFreezerRole();
-    _mockPrice(0.90e8);
+    _mockPrice(DEPEGGED_PRICE);
     vm.prank(anyone);
     robot.onReport('', '');
     assertTrue(IGsm(GSM).getIsFrozen(), 'gsm not frozen');
 
-    _mockPrice(1e8);
+    _mockPrice(PEG_PRICE);
     (bool needed, ) = robot.checkUpkeep('');
     assertTrue(needed, 'unfreeze should be needed');
 
@@ -108,6 +106,8 @@ contract GsmFreezerReceiverForkTest is Test {
 }
 
 contract GsmFreezerDeployScriptForkTest is Test {
+  uint256 internal constant DEPEGGED_PRICE = 0.90e8;
+
   address internal anyone = makeAddr('anyone');
 
   function test_fork_ethereum_deployScriptFreezesEveryGsm() public {
@@ -132,6 +132,7 @@ contract GsmFreezerDeployScriptForkTest is Test {
     DeployGsmFreezerReceiver script = new DeployGsmFreezerReceiver();
     DeployGsmFreezerReceiver.DeployConfig memory config = script.getDeployConfig(block.chainid);
     address[] memory receivers = script.run();
+    (address owner, ) = GovernanceOwners.get(block.chainid);
     assertEq(receivers.length, config.freezers.length, 'one receiver per GSM');
 
     address oracle = IPoolAddressesProvider(config.addressesProvider).getPriceOracle();
@@ -139,12 +140,12 @@ contract GsmFreezerDeployScriptForkTest is Test {
       GsmFreezerReceiver receiver = GsmFreezerReceiver(receivers[i]);
       IGsm gsm = IGsm(config.freezers[i].gsm);
       assertEq(address(receiver.GSM()), address(gsm), 'receiver points to another GSM');
-      assertEq(receiver.owner(), config.owner, 'unexpected owner');
+      assertEq(receiver.owner(), owner, 'unexpected owner');
       assertFalse(gsm.getIsSeized(), 'gsm is seized');
       assertFalse(gsm.getIsFrozen(), 'gsm already frozen on the fork');
 
       bytes32 role = gsm.SWAP_FREEZER_ROLE();
-      vm.prank(config.owner);
+      vm.prank(owner);
       IAccessControl(address(gsm)).grantRole(role, address(receiver));
       (bool needed, ) = receiver.checkUpkeep('');
       assertFalse(needed, 'upkeep needed at peg');
@@ -152,7 +153,7 @@ contract GsmFreezerDeployScriptForkTest is Test {
       vm.mockCall(
         oracle,
         abi.encodeCall(IPriceOracleGetter.getAssetPrice, (config.freezers[i].underlying)),
-        abi.encode(0.90e8)
+        abi.encode(DEPEGGED_PRICE)
       );
       vm.prank(anyone);
       receiver.onReport('', '');
