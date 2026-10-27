@@ -5,16 +5,16 @@ import {Test} from 'forge-std/Test.sol';
 
 import {Ownable} from 'openzeppelin-contracts/contracts/access/Ownable.sol';
 import {IWithGuardian} from 'solidity-utils/contracts/access-control/interfaces/IWithGuardian.sol';
-import {IERC165} from 'openzeppelin-contracts/contracts/utils/introspection/IERC165.sol';
-import {IRescuable} from 'aave-v4/interfaces/IRescuable.sol';
-
-import {IReceiver} from 'aave-cre/IReceiver.sol';
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
 
 import {ProofOfReserveReceiver} from '../src/ProofOfReserveReceiver.sol';
 import {IProofOfReserveReceiver, IProofOfReserveExecutor} from '../src/IProofOfReserveReceiver.sol';
 
 contract ProofOfReserveReceiverTest is Test {
+  struct ExecutorState {
+    bool allBacked;
+    bool possible;
+  }
+
   ProofOfReserveReceiver internal robot;
 
   address internal owner;
@@ -32,11 +32,6 @@ contract ProofOfReserveReceiverTest is Test {
     executor = makeAddr('executor');
 
     robot = new ProofOfReserveReceiver(owner, guardian, new address[](0));
-  }
-
-  function test_constructor_setsOwnerAndGuardian() public view {
-    assertEq(robot.owner(), owner, 'owner mismatch');
-    assertEq(robot.guardian(), guardian, 'guardian mismatch');
   }
 
   function test_constructor_enablesInitialExecutors() public {
@@ -78,59 +73,8 @@ contract ProofOfReserveReceiverTest is Test {
     new ProofOfReserveReceiver(owner, guardian, executors);
   }
 
-  function test_supportsInterface() public view {
-    assertTrue(robot.supportsInterface(type(IReceiver).interfaceId), 'IReceiver not supported');
-    assertTrue(
-      robot.supportsInterface(type(IAaveCREReceiver).interfaceId),
-      'IAaveCREReceiver not supported'
-    );
-    assertTrue(robot.supportsInterface(type(IERC165).interfaceId), 'IERC165 not supported');
-    assertFalse(robot.supportsInterface(0xffffffff), 'invalid interface id supported');
-  }
-
   function test_executor_notEnabledByDefault() public view {
     assertFalse(robot.isExecutorEnabled(executor), 'executor enabled by default');
-  }
-
-  function test_fuzz_checkUpkeep_whenEnabled(bool allBacked, bool possible) public {
-    _enable(executor);
-    _mockExecutor(executor, ExecutorState({allBacked: allBacked, possible: possible}));
-
-    (bool needed, bytes memory performData) = robot.checkUpkeep(abi.encode(executor));
-
-    bool expected = !allBacked && possible;
-    assertEq(needed, expected, 'unexpected upkeepNeeded');
-    if (expected) {
-      assertEq(abi.decode(performData, (address)), executor, 'performData is not the executor');
-    } else {
-      assertEq(performData.length, 0, 'performData should be empty');
-    }
-  }
-
-  function test_fuzz_checkUpkeep_returnsFalse_whenNotEnabled(bool allBacked, bool possible) public {
-    _mockExecutor(executor, ExecutorState({allBacked: allBacked, possible: possible}));
-
-    (bool needed, bytes memory performData) = robot.checkUpkeep(abi.encode(executor));
-    assertFalse(needed, 'upkeep needed for non-enabled executor');
-    assertEq(performData.length, 0, 'performData should be empty');
-  }
-
-  function test_fuzz_checkUpkeep_returnsFalse_whenDisabledAfterEnabled(
-    bool allBacked,
-    bool possible
-  ) public {
-    _enable(executor);
-    vm.prank(guardian);
-    robot.disableExecutor(executor);
-    _mockExecutor(executor, ExecutorState({allBacked: allBacked, possible: possible}));
-
-    (bool needed, ) = robot.checkUpkeep(abi.encode(executor));
-    assertFalse(needed, 'upkeep needed for disabled executor');
-  }
-
-  function test_checkUpkeep_returnsFalse_whenExecutorZero() public view {
-    (bool needed, ) = robot.checkUpkeep(abi.encode(address(0)));
-    assertFalse(needed, 'upkeep needed for zero executor');
   }
 
   function test_onReport_executes_whenAnyoneCalls() public {
@@ -180,6 +124,47 @@ contract ProofOfReserveReceiverTest is Test {
     vm.prank(anyone);
     vm.expectRevert(IProofOfReserveReceiver.EmergencyActionNotPossible.selector);
     robot.onReport('', abi.encode(executor));
+  }
+
+  function test_fuzz_checkUpkeep_whenEnabled(bool allBacked, bool possible) public {
+    _enable(executor);
+    _mockExecutor(executor, ExecutorState({allBacked: allBacked, possible: possible}));
+
+    (bool needed, bytes memory performData) = robot.checkUpkeep(abi.encode(executor));
+
+    bool expected = !allBacked && possible;
+    assertEq(needed, expected, 'unexpected upkeepNeeded');
+    if (expected) {
+      assertEq(abi.decode(performData, (address)), executor, 'performData is not the executor');
+    } else {
+      assertEq(performData.length, 0, 'performData should be empty');
+    }
+  }
+
+  function test_fuzz_checkUpkeep_returnsFalse_whenNotEnabled(bool allBacked, bool possible) public {
+    _mockExecutor(executor, ExecutorState({allBacked: allBacked, possible: possible}));
+
+    (bool needed, bytes memory performData) = robot.checkUpkeep(abi.encode(executor));
+    assertFalse(needed, 'upkeep needed for non-enabled executor');
+    assertEq(performData.length, 0, 'performData should be empty');
+  }
+
+  function test_fuzz_checkUpkeep_returnsFalse_whenDisabledAfterEnabled(
+    bool allBacked,
+    bool possible
+  ) public {
+    _enable(executor);
+    vm.prank(guardian);
+    robot.disableExecutor(executor);
+    _mockExecutor(executor, ExecutorState({allBacked: allBacked, possible: possible}));
+
+    (bool needed, ) = robot.checkUpkeep(abi.encode(executor));
+    assertFalse(needed, 'upkeep needed for disabled executor');
+  }
+
+  function test_checkUpkeep_returnsFalse_whenExecutorZero() public view {
+    (bool needed, ) = robot.checkUpkeep(abi.encode(address(0)));
+    assertFalse(needed, 'upkeep needed for zero executor');
   }
 
   function test_enableExecutor() public {
@@ -262,23 +247,6 @@ contract ProofOfReserveReceiverTest is Test {
       )
     );
     robot.disableExecutor(executor);
-  }
-
-  function test_rescueGuardian_isOwner() public view {
-    assertEq(robot.rescueGuardian(), owner, 'rescue guardian is not the owner');
-  }
-
-  function test_rescueToken_revertsWith_OnlyRescueGuardian() public {
-    address token = makeAddr('token');
-
-    vm.prank(guardian);
-    vm.expectRevert(IRescuable.OnlyRescueGuardian.selector);
-    robot.rescueToken(token, bob, 100);
-  }
-
-  struct ExecutorState {
-    bool allBacked;
-    bool possible;
   }
 
   function _enable(address executor_) internal {

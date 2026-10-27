@@ -1,25 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
+import {IWorkflowsBase} from 'aave-cre/IWorkflowsBase.sol';
 
 /// @notice Minimal view of an Aave Proof of Reserve executor.
 interface IProofOfReserveExecutor {
+  /// @notice Freezes reserves that fail proof-of-reserve validation. Permissionless.
+  function executeEmergencyAction() external;
+
   /// @notice Whether every reserve tracked by the executor is currently backed.
   function areAllReservesBacked() external view returns (bool);
 
   /// @notice Whether the emergency action would change any state right now.
   function isEmergencyActionPossible() external view returns (bool);
-
-  /// @notice Freezes reserves that fail proof-of-reserve validation. Permissionless.
-  function executeEmergencyAction() external;
 }
 
 /// @title IProofOfReserveReceiver
 /// @notice Robot that runs an Aave Proof of Reserve executor's emergency action
 /// when a reserve becomes unbacked.
 /// @dev `checkData` and the `report` are both `abi.encode(address executor)`.
-interface IProofOfReserveReceiver is IAaveCREReceiver {
+interface IProofOfReserveReceiver is IWorkflowsBase {
   /// @notice Emitted when the emergency action is executed on an executor.
   /// @param executor The executor the emergency action ran on.
   event EmergencyActionExecuted(address indexed executor);

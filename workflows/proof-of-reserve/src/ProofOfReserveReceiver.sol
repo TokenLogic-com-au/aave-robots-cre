@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {OwnableWithGuardian} from 'solidity-utils/contracts/access-control/OwnableWithGuardian.sol';
-import {IERC165} from 'openzeppelin-contracts/contracts/utils/introspection/IERC165.sol';
-import {Rescuable} from 'aave-v4/utils/Rescuable.sol';
-
-import {IReceiver} from 'aave-cre/IReceiver.sol';
-import {IAaveCREReceiver} from 'aave-cre/IAaveCREReceiver.sol';
+import {WorkflowsBase} from 'aave-cre/WorkflowsBase.sol';
 import {IProofOfReserveReceiver, IProofOfReserveExecutor} from './IProofOfReserveReceiver.sol';
 
 /// @title ProofOfReserveReceiver
@@ -15,7 +10,7 @@ import {IProofOfReserveReceiver, IProofOfReserveExecutor} from './IProofOfReserv
 /// executor's emergency action when a reserve becomes unbacked. Native CRE
 /// re-implementation of BGD Labs' `ProofOfReserveKeeper`.
 /// @dev Needs no on-chain role: `executeEmergencyAction` is permissionless.
-contract ProofOfReserveReceiver is IProofOfReserveReceiver, OwnableWithGuardian, Rescuable {
+contract ProofOfReserveReceiver is IProofOfReserveReceiver, WorkflowsBase {
   mapping(address executor => bool) internal _enabled;
 
   /// @param initialOwner_ The address of the initial owner.
@@ -25,7 +20,7 @@ contract ProofOfReserveReceiver is IProofOfReserveReceiver, OwnableWithGuardian,
     address initialOwner_,
     address initialGuardian_,
     address[] memory initialExecutors_
-  ) OwnableWithGuardian(initialOwner_, initialGuardian_) {
+  ) WorkflowsBase(initialOwner_, initialGuardian_) {
     for (uint256 i = 0; i < initialExecutors_.length; i++) {
       _enableExecutor(initialExecutors_[i]);
     }
@@ -39,26 +34,9 @@ contract ProofOfReserveReceiver is IProofOfReserveReceiver, OwnableWithGuardian,
   /// @inheritdoc IProofOfReserveReceiver
   function disableExecutor(address executor) external onlyOwnerOrGuardian {
     require(_enabled[executor], ExecutorStatusUnchanged(executor, false));
+
     _enabled[executor] = false;
     emit ExecutorStatusUpdated(executor, false);
-  }
-
-  /// @inheritdoc IAaveCREReceiver
-  function checkUpkeep(
-    bytes calldata checkData
-  ) external view returns (bool upkeepNeeded, bytes memory performData) {
-    address executor = abi.decode(checkData, (address));
-    if (!_shouldExecute(executor)) return (false, '');
-    return (true, abi.encode(executor));
-  }
-
-  /// @inheritdoc IReceiver
-  /// @dev Re-validates the executor so a stale report can't force a pointless run.
-  function onReport(bytes calldata /* metadata */, bytes calldata report) external override {
-    address executor = abi.decode(report, (address));
-    require(_shouldExecute(executor), EmergencyActionNotPossible());
-    IProofOfReserveExecutor(executor).executeEmergencyAction();
-    emit EmergencyActionExecuted(executor);
   }
 
   /// @inheritdoc IProofOfReserveReceiver
@@ -66,17 +44,27 @@ contract ProofOfReserveReceiver is IProofOfReserveReceiver, OwnableWithGuardian,
     return _enabled[executor];
   }
 
-  /// @inheritdoc IERC165
-  function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
-    return
-      interfaceId == type(IReceiver).interfaceId ||
-      interfaceId == type(IAaveCREReceiver).interfaceId ||
-      interfaceId == type(IERC165).interfaceId;
+  /// @dev Re-validates the executor so a stale report can't force a pointless run.
+  function _onReport(bytes calldata /* metadata */, bytes calldata report) internal override {
+    address executor = abi.decode(report, (address));
+    require(_shouldExecute(executor), EmergencyActionNotPossible());
+
+    IProofOfReserveExecutor(executor).executeEmergencyAction();
+    emit EmergencyActionExecuted(executor);
+  }
+
+  function _checkUpkeep(
+    bytes calldata checkData
+  ) internal view override returns (bool, bytes memory) {
+    address executor = abi.decode(checkData, (address));
+    if (!_shouldExecute(executor)) return (false, '');
+    return (true, abi.encode(executor));
   }
 
   function _enableExecutor(address executor) internal {
     require(executor != address(0), InvalidExecutor());
     require(!_enabled[executor], ExecutorStatusUnchanged(executor, true));
+
     _enabled[executor] = true;
     emit ExecutorStatusUpdated(executor, true);
   }
@@ -89,10 +77,5 @@ contract ProofOfReserveReceiver is IProofOfReserveReceiver, OwnableWithGuardian,
     if (!_enabled[executor]) return false;
     IProofOfReserveExecutor e = IProofOfReserveExecutor(executor);
     return !e.areAllReservesBacked() && e.isEmergencyActionPossible();
-  }
-
-  /// @inheritdoc Rescuable
-  function _rescueGuardian() internal view override returns (address) {
-    return owner();
   }
 }
