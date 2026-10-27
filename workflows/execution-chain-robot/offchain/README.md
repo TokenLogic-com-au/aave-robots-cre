@@ -1,15 +1,15 @@
 # ExecutionChainRobot — CRE workflow
 
 Off-chain CRE workflow driving [`ExecutionChainRobotReceiver`](../src/ExecutionChainRobotReceiver.sol).
-Every 10 minutes, per chain, it calls the receiver's `checkUpkeep` (empty `checkData`) and
-writes one report `abi.encode(uint40[] [payloadId])` to `onReport` for each payload returned,
-so a payload that reverts doesn't block the others.
+Every 10 minutes (`GOVERNANCE_SCHEDULE`), per chain, it calls the receiver's `checkUpkeep`
+(empty `checkData`) and writes one report `abi.encode(uint40[] [payloadId])` to `onReport` for
+each payload returned, so a payload that reverts doesn't block the others.
 
-Each write is estimated first. A revert is skipped with a log, and so is an estimate where
-`estimate * 64 / 63 + WRITE_OVERHEAD_GAS` (250k for the forwarder) exceeds `MAX_WRITE_GAS`
-(16,777,216, the gas limit the DON gives every write): it would fail and be retried every
-tick. No `gasConfig` is sent, so writes get that DON default. A write whose `onReport` reverted inside the forwarder
-tx is logged as failed.
+Each write goes through the shared `submitReport`
+([`checkUpkeep.ts`](../../shared/offchain/checkUpkeep.ts)): a payload whose `onReport`
+estimate reverts, or doesn't fit the write gas quota once the forwarder's overhead is added
+(`requiredWriteGas`), is skipped with a log, since it would fail and be retried every tick. A
+write whose `onReport` reverted inside the forwarder tx is logged as failed.
 
 ## Config
 
