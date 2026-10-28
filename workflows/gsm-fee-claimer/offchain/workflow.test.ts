@@ -3,7 +3,7 @@ import {TxStatus, getNetwork} from '@chainlink/cre-sdk';
 import {EvmMock, newTestRuntime, test} from '@chainlink/cre-sdk/test';
 import {decodeAbiParameters, hexToBytes, parseAbiParameters, type Address, type Hex} from 'viem';
 
-import {MAX_WRITE_GAS} from '../../shared/offchain/constants';
+import {maxWriteGasOf} from '../../shared/offchain/network';
 import {chainSelectorOf, checkUpkeepMock} from '../../shared/offchain/testing/mocks';
 import {configSchema} from './types';
 import {createReceiverHandler, initWorkflow} from './workflow';
@@ -89,7 +89,7 @@ describe('gsm-fee-claimer workflow', () => {
   test('returns "submit skipped" when the estimate exceeds the write quota', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     evmMock.callContract = checkUpkeepMock(true, PERFORM_DATA);
-    evmMock.estimateGas = () => ({gas: MAX_WRITE_GAS + 1n});
+    evmMock.estimateGas = () => ({gas: maxWriteGasOf(CHAIN_NAME) + 1n});
     const runtime = newTestRuntime();
     expect(handle(runtime as never)).toBe('submit skipped');
     expect(runtime.getLogs().find((l) => l.includes('exceeds max write gas'))).toBeDefined();
