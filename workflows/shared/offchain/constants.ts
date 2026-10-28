@@ -1,9 +1,12 @@
 import type {Hex} from 'viem';
 
-// Gas quota of a CRE write (`ChainWrite.EVM.TransactionGasLimit`), 2^24 since Chainlink raised
-// it from 10M in October 2026. `submitReport` skips writes whose estimate doesn't fit it; the
-// write itself sends no gas limit, so the DON applies its default.
-export const MAX_WRITE_GAS = 16_777_216n;
+// Gas quota of a CRE write (`ChainWrite.EVM.TransactionGasLimit`): the gas limit the DON gives
+// our writes, which send none. Measured on-chain: 10M, except on Ethereum, which Chainlink raised
+// to 2^24 in October 2026. `submitReport` skips writes whose estimate doesn't fit.
+export const MAX_WRITE_GAS = 10_000_000n;
+export const MAX_WRITE_GAS_BY_CHAIN: Readonly<Record<string, bigint>> = {
+  'ethereum-mainnet': 16_777_216n,
+};
 
 // Forwarder report verification and call overhead on top of `onReport` itself.
 export const WRITE_OVERHEAD_GAS = 250_000n;

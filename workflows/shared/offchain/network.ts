@@ -2,10 +2,14 @@ import {cre, getNetwork, handler, type Runtime} from '@chainlink/cre-sdk';
 import type {Address} from 'viem';
 
 import type {EvmClient} from './checkUpkeep';
+import {MAX_WRITE_GAS, MAX_WRITE_GAS_BY_CHAIN} from './constants';
 
 export type NetworkSelector = {chainName: string; isTestnet?: boolean};
 
 export type DeployedNetwork<TNetwork extends {receiver: string}> = TNetwork & {receiver: Address};
+
+// The client doesn't expose its chain, so remember it for the write quota.
+const chainNames = new WeakMap<EvmClient, string>();
 
 /// EVM client for the network, or `null` if CRE doesn't know it.
 export function getEvmClient(network: NetworkSelector): EvmClient | null {
@@ -14,7 +18,21 @@ export function getEvmClient(network: NetworkSelector): EvmClient | null {
     chainSelectorName: network.chainName,
     isTestnet: network.isTestnet ?? false,
   });
-  return creNetwork ? new cre.capabilities.EVMClient(creNetwork.chainSelector.selector) : null;
+  if (!creNetwork) return null;
+  const evmClient = new cre.capabilities.EVMClient(creNetwork.chainSelector.selector);
+  chainNames.set(evmClient, network.chainName);
+  return evmClient;
+}
+
+/// Write gas quota of a chain, by CRE chain selector name.
+export function maxWriteGasOf(chainName: string): bigint {
+  return MAX_WRITE_GAS_BY_CHAIN[chainName] ?? MAX_WRITE_GAS;
+}
+
+/// Write gas quota of the client's chain; `MAX_WRITE_GAS` for a client `getEvmClient` didn't build.
+export function maxWriteGas(evmClient: EvmClient): bigint {
+  const chainName = chainNames.get(evmClient);
+  return chainName ? maxWriteGasOf(chainName) : MAX_WRITE_GAS;
 }
 
 /// Networks whose receiver is deployed, i.e. set in the config.

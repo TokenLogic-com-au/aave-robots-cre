@@ -16,8 +16,10 @@ import {MAX_WRITE_GAS, WRITE_OVERHEAD_GAS} from '../constants';
 import {getEvmClient} from '../network';
 import {chainSelectorOf, checkUpkeepMock, type CallContractInput} from '../testing/mocks';
 
-// Largest estimate with estimate * 64 / 63 + WRITE_OVERHEAD_GAS <= MAX_WRITE_GAS.
-const MAX_ESTIMATE = 16_268_979n;
+// Largest estimates with estimate * 64 / 63 + WRITE_OVERHEAD_GAS within the default quota
+// (MAX_WRITE_GAS) and within Ethereum's.
+const MAX_ESTIMATE = 9_597_657n;
+const ETHEREUM_MAX_ESTIMATE = 16_268_979n;
 
 const CHAIN_NAME = 'ethereum-mainnet';
 const CHAIN_SELECTOR = chainSelectorOf(CHAIN_NAME);
@@ -149,7 +151,7 @@ describe('fitsWriteQuota', () => {
 describe('submitReport', () => {
   test('writes the report to the receiver with the DON default gas limit and returns the tx hash', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.estimateGas = () => ({gas: MAX_ESTIMATE});
+    evmMock.estimateGas = () => ({gas: ETHEREUM_MAX_ESTIMATE});
     let write: WriteReportInput | undefined;
     evmMock.writeReport = (req: WriteReportInput) => {
       write = req;
@@ -202,7 +204,7 @@ describe('submitReport', () => {
 
   test('skips the write and logs when the estimate exceeds the quota', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
-    evmMock.estimateGas = () => ({gas: MAX_ESTIMATE + 1n});
+    evmMock.estimateGas = () => ({gas: ETHEREUM_MAX_ESTIMATE + 1n});
     let written = false;
     evmMock.writeReport = () => {
       written = true;
@@ -213,6 +215,21 @@ describe('submitReport', () => {
     expect(submitReport(runtime, evmClient(), RECEIVER, PERFORM_DATA, LABEL)).toBeNull();
     expect(written).toBe(false);
     expect(runtime.getLogs().some((l) => l.includes('exceeds max write gas'))).toBe(true);
+  });
+
+  test('applies the default quota on chains Chainlink did not raise', () => {
+    const avalanche = 'avalanche-mainnet';
+    const evmMock = EvmMock.testInstance(chainSelectorOf(avalanche));
+    evmMock.estimateGas = () => ({gas: MAX_ESTIMATE + 1n});
+    let written = false;
+    evmMock.writeReport = () => {
+      written = true;
+      return success();
+    };
+
+    const client = getEvmClient({chainName: avalanche})!;
+    expect(submitReport(newTestRuntime(), client, RECEIVER, PERFORM_DATA, LABEL)).toBeNull();
+    expect(written).toBe(false);
   });
 
   test('returns null and logs when the tx fails', () => {

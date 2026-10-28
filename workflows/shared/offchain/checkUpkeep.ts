@@ -11,6 +11,7 @@ import {EVM_PB} from '@chainlink/cre-sdk/pb';
 import {decodeFunctionResult, encodeFunctionData, zeroAddress, type Hex} from 'viem';
 
 import {IAaveCREReceiverABI} from './abi/IAaveCREReceiver';
+import {maxWriteGas} from './network';
 import {
   CALL_GAS_DENOMINATOR,
   CALL_GAS_NUMERATOR,
@@ -111,7 +112,7 @@ export function fitsWriteQuota(estimate: bigint, gasLimit: bigint = MAX_WRITE_GA
 
 /// Estimates `onReport`, then signs `performData` and writes it as its `report` directly to
 /// the robot (no MailboxCRE indirection). The estimate only gates the write: it is skipped if
-/// `onReport` would revert or not fit `gasLimit` (the CRE quota by default). The write sends no
+/// `onReport` would revert or not fit `gasLimit` (the chain's CRE quota by default). The write sends no
 /// `gasConfig` unless `gasLimit` is given, so the DON applies its default, which is the quota;
 /// requesting exactly Ethereum's per-transaction cap explicitly can be rejected. Returns the tx
 /// hash, or `null` (after logging) if skipped, if the tx failed or if `onReport` reverted inside it.
@@ -128,7 +129,7 @@ export function submitReport<TConfig>(
     metadata,
   });
   if (estimate === null) return null;
-  const maxGas = gasLimit ?? MAX_WRITE_GAS;
+  const maxGas = gasLimit ?? maxWriteGas(evmClient);
   if (!fitsWriteQuota(estimate, maxGas)) {
     runtime.log(
       `[${label}] estimate ${estimate} (${requiredWriteGas(estimate)} with forwarder overhead) exceeds max write gas ${maxGas} — skipping`,
