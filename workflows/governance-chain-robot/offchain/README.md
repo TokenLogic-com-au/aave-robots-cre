@@ -6,8 +6,8 @@ Off-chain CRE workflow driving
 when an action is due, hands `performData` to the shared `submitReport`
 ([`shared/offchain/checkUpkeep.ts`](../../shared/offchain/checkUpkeep.ts)), which estimates
 `onReport`, skips the tick if it would revert or not fit the CRE write quota, and otherwise
-writes the signed report with the full quota as gas limit. The estimate is never the gas
-limit: with too little gas `onReport` can succeed while a Governance call or its a.DI forward
+writes the signed report without a `gasConfig`, so the DON applies its default limit (the
+quota). The estimate is never the gas limit: with too little gas `onReport` can succeed while a Governance call or its a.DI forward
 fails.
 
 ## Config
