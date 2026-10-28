@@ -111,25 +111,27 @@ export function fitsWriteQuota(estimate: bigint, gasLimit: bigint = MAX_WRITE_GA
 
 /// Estimates `onReport`, then signs `performData` and writes it as its `report` directly to
 /// the robot (no MailboxCRE indirection). The estimate only gates the write: it is skipped if
-/// `onReport` would revert or not fit the quota, and the write always requests the full
-/// `gasLimit`. Returns the tx hash, or `null` (after logging) if skipped, if the tx failed or if
-/// `onReport` reverted inside it.
+/// `onReport` would revert or not fit `gasLimit` (the CRE quota by default). The write sends no
+/// `gasConfig` unless `gasLimit` is given, so the DON applies its default, which is the quota;
+/// requesting exactly Ethereum's per-transaction cap explicitly can be rejected. Returns the tx
+/// hash, or `null` (after logging) if skipped, if the tx failed or if `onReport` reverted inside it.
 export function submitReport<TConfig>(
   runtime: Runtime<TConfig>,
   evmClient: EvmClient,
   robotAddress: string,
   performData: Hex,
   label: string,
-  {from, metadata, gasLimit = MAX_WRITE_GAS}: SubmitOptions = {},
+  {from, metadata, gasLimit}: SubmitOptions = {},
 ): string | null {
   const estimate = estimateOnReport(runtime, evmClient, robotAddress, performData, label, {
     from,
     metadata,
   });
   if (estimate === null) return null;
-  if (!fitsWriteQuota(estimate, gasLimit)) {
+  const maxGas = gasLimit ?? MAX_WRITE_GAS;
+  if (!fitsWriteQuota(estimate, maxGas)) {
     runtime.log(
-      `[${label}] estimate ${estimate} (${requiredWriteGas(estimate)} with forwarder overhead) exceeds max write gas ${gasLimit} — skipping`,
+      `[${label}] estimate ${estimate} (${requiredWriteGas(estimate)} with forwarder overhead) exceeds max write gas ${maxGas} — skipping`,
     );
     return null;
   }
@@ -147,7 +149,7 @@ export function submitReport<TConfig>(
     .writeReport(runtime, {
       receiver: robotAddress,
       report,
-      gasConfig: {gasLimit: gasLimit.toString()},
+      ...(gasLimit === undefined ? {} : {gasConfig: {gasLimit: gasLimit.toString()}}),
     })
     .result();
 

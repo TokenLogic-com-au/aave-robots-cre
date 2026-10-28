@@ -147,7 +147,7 @@ describe('fitsWriteQuota', () => {
 });
 
 describe('submitReport', () => {
-  test('writes the report to the receiver with the full quota and returns the tx hash', () => {
+  test('writes the report to the receiver with the DON default gas limit and returns the tx hash', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     evmMock.estimateGas = () => ({gas: MAX_ESTIMATE});
     let write: WriteReportInput | undefined;
@@ -160,7 +160,7 @@ describe('submitReport', () => {
       TX_HASH,
     );
     expect(bytesToHex(write!.receiver)).toBe(RECEIVER);
-    expect(BigInt(write!.gasConfig!.gasLimit)).toBe(MAX_WRITE_GAS);
+    expect(write!.gasConfig).toBeUndefined();
   });
 
   test('estimates as `from` with `metadata` and writes with a custom gas limit', () => {
