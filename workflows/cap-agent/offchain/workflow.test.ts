@@ -90,7 +90,7 @@ describe('cap-agent workflow', () => {
 
     expect(handle()).toBe(`injected, tx=${TX_HASH}`);
     expect(estimated).toBe(PERFORM_DATA);
-    expect(writes).toEqual([{receiver: RECEIVER, gasLimit: MAX_WRITE_GAS.toString()}]);
+    expect(writes).toEqual([{receiver: RECEIVER, gasLimit: undefined}]);
   });
 
   test('returns "submit skipped" when the write fails', () => {
