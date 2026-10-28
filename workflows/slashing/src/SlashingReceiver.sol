@@ -48,7 +48,7 @@ contract SlashingReceiver is ISlashingReceiver, WorkflowsBase {
   }
 
   /// @inheritdoc ISlashingReceiver
-  function isDisabled(address reserve) external view returns (bool) {
+  function isReserveDisabled(address reserve) external view returns (bool) {
     return _disabledReserves[reserve];
   }
 
