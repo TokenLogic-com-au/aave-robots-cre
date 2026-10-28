@@ -94,7 +94,7 @@ contract VotingChainRobotReceiverTest is Test {
     _mockRoots(_hash(1), strategyRoots, governanceRoot);
     if (disabled) {
       vm.prank(guardian);
-      robot.disableAutomation(1);
+      robot.disableId(1);
     }
 
     (bool due, IVotingChainRobotReceiver.ProposalAction action) = robot.getAction(1);
@@ -242,7 +242,7 @@ contract VotingChainRobotReceiverTest is Test {
     _setupProposal(2, IVotingMachineWithProofs.ProposalState.Finished, _hash(2));
     _setupProposal(1, IVotingMachineWithProofs.ProposalState.Finished, _hash(1));
     vm.prank(guardian);
-    robot.disableAutomation(2);
+    robot.disableId(2);
 
     (, bytes memory performData) = robot.checkUpkeep('');
     IVotingChainRobotReceiver.ActionWithId[] memory actions = _decode(performData);
@@ -362,7 +362,7 @@ contract VotingChainRobotReceiverTest is Test {
     _setupProposal(1, IVotingMachineWithProofs.ProposalState.Finished, _hash(1));
     _mockCloseAndSendVote(1);
     vm.prank(guardian);
-    robot.disableAutomation(1);
+    robot.disableId(1);
 
     vm.expectCall(votingMachine, abi.encodeCall(IVotingMachineWithProofs.closeAndSendVote, (1)), 0);
     vm.expectRevert(IVotingChainRobotReceiver.NoActionCanBePerformed.selector);

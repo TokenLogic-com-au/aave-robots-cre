@@ -95,7 +95,7 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, GasCappedWorkflo
 
   /// @dev Performs `a` if still due and the proposal isn't disabled; returns whether it ran.
   function _performAction(ActionWithId memory a) internal returns (bool) {
-    if (isDisabled(a.id)) return false;
+    if (isIdDisabled(a.id)) return false;
 
     IVotingMachineWithProofs.ProposalState state = VOTING_MACHINE.getProposalState(a.id);
 
@@ -133,7 +133,7 @@ contract VotingChainRobotReceiver is IVotingChainRobotReceiver, GasCappedWorkflo
 
   /// @dev The action due on a proposal: start the vote or close it.
   function _getAction(uint256 proposalId) internal view returns (bool, ProposalAction) {
-    if (isDisabled(proposalId)) return (false, ProposalAction.PerformCreateVote);
+    if (isIdDisabled(proposalId)) return (false, ProposalAction.PerformCreateVote);
 
     IVotingMachineWithProofs.ProposalState state = VOTING_MACHINE.getProposalState(proposalId);
     if (_canCloseAndSendVote(state)) return (true, ProposalAction.PerformCloseAndSendVote);
