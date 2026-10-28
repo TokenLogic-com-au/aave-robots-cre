@@ -4,7 +4,7 @@ import {EvmMock, newTestRuntime, test} from '@chainlink/cre-sdk/test';
 import {bytesToHex, decodeFunctionData, hexToBytes, type Hex} from 'viem';
 
 import {IAaveCREReceiverABI} from '../../shared/offchain/abi/IAaveCREReceiver';
-import {GOVERNANCE_SCHEDULE, MAX_WRITE_GAS} from '../../shared/offchain/constants';
+import {GOVERNANCE_SCHEDULE} from '../../shared/offchain/constants';
 import {chainSelectorOf, checkUpkeepMock} from '../../shared/offchain/testing/mocks';
 import productionConfig from './config.production.json';
 import {configSchema, createReceiverHandler, initWorkflow} from './workflow';
