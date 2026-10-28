@@ -44,13 +44,13 @@ describe('governance chain robot workflow', () => {
     };
     let written: {receiver: Hex; gasLimit: bigint} | undefined;
     evmMock.writeReport = (input) => {
-      written = {receiver: bytesToHex(input.receiver), gasLimit: BigInt(input.gasConfig!.gasLimit)};
+      written = {receiver: bytesToHex(input.receiver), gasLimit: input.gasConfig?.gasLimit};
       return {txStatus: TxStatus.SUCCESS, txHash: hexToBytes(TX_HASH)};
     };
 
     expect(handle(newTestRuntime() as never)).toBe(`actions performed, tx=${TX_HASH}`);
     expect(estimated).toEqual({to: RECEIVER, args: ['0x', PERFORM_DATA]});
-    expect(written).toEqual({receiver: RECEIVER, gasLimit: MAX_WRITE_GAS});
+    expect(written).toEqual({receiver: RECEIVER, gasLimit: undefined});
   });
 
   test('returns "submit skipped" without writing when onReport would revert', () => {
