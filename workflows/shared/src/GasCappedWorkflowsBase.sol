@@ -33,6 +33,7 @@ abstract contract GasCappedWorkflowsBase is WorkflowsBase, IGasCappedWorkflowsBa
   /// @inheritdoc IGasCappedWorkflowsBase
   function setMaxGasPrice(uint256 maxGasPrice) external onlyOwnerOrGuardian {
     require(GAS_PRICE_ORACLE != address(0), GasPriceCapNotSupported());
+    require(maxGasPrice != 0, InvalidMaxGasPrice());
     require(maxGasPrice != _maxGasPrice, MaxGasPriceUnchanged());
     _maxGasPrice = maxGasPrice;
     emit MaxGasPriceSet(maxGasPrice);

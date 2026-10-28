@@ -15,14 +15,15 @@ interface IGasCappedWorkflowsBase is IWorkflowsBase {
   /// @notice Thrown when setting a gas price cap on a robot deployed without a gas price feed.
   error GasPriceCapNotSupported();
 
-  /// @notice Thrown when deploying with a gas price feed and a zero max gas price.
+  /// @notice Thrown when the max gas price of a capped robot is set to zero, which would stop
+  /// every upkeep.
   error InvalidMaxGasPrice();
 
   /// @notice Thrown when setting the maximum gas price to its current value.
   error MaxGasPriceUnchanged();
 
   /// @notice Set the gas price above which `checkUpkeep` reports no upkeep. Owner or guardian.
-  /// @param maxGasPrice The maximum gas price, in wei. Must differ from the current one.
+  /// @param maxGasPrice The maximum gas price, in wei. Non-zero, and different from the current one.
   function setMaxGasPrice(uint256 maxGasPrice) external;
 
   /// @notice Chainlink gas price feed compared against the maximum gas price, or the zero

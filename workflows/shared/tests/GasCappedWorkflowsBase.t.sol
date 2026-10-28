@@ -55,7 +55,7 @@ contract GasCappedWorkflowsBaseTest is Test {
   }
 
   function test_fuzz_setMaxGasPrice_byOwnerOrGuardian(bool byOwner, uint256 maxGasPrice) public {
-    vm.assume(maxGasPrice != MAX_GAS_PRICE);
+    vm.assume(maxGasPrice != 0 && maxGasPrice != MAX_GAS_PRICE);
     vm.expectEmit(address(robot));
     emit IGasCappedWorkflowsBase.MaxGasPriceSet(maxGasPrice);
     vm.prank(byOwner ? owner : guardian);
@@ -70,6 +70,12 @@ contract GasCappedWorkflowsBaseTest is Test {
     );
     vm.prank(anyone);
     robot.setMaxGasPrice(1);
+  }
+
+  function test_setMaxGasPrice_revertsWith_InvalidMaxGasPrice() public {
+    vm.expectRevert(IGasCappedWorkflowsBase.InvalidMaxGasPrice.selector);
+    vm.prank(owner);
+    robot.setMaxGasPrice(0);
   }
 
   function test_setMaxGasPrice_revertsWith_MaxGasPriceUnchanged() public {
