@@ -1,11 +1,12 @@
 import {addContractMock, EvmMock, newTestRuntime, type TestRuntime} from '@chainlink/cre-sdk/test';
 import {TxStatus, type Runtime} from '@chainlink/cre-sdk';
 import {bytesToHex, hexToBytes, type Address, type Hex} from 'viem';
-import {IAaveDepositorReceiver} from '../abi/IAaveDepositorReceiver';
-import {IAaveDataProviderV3} from '../abi/IAaveDataProviderV3';
-import {IAavePriceOracle} from '../abi/IAavePriceOracle';
-import {IERC20} from '../abi/IERC20';
-import {IMulticall3, MULTICALL3_ADDRESS} from '../abi/IMulticall3';
+import {IAaveDepositorReceiverABI} from '../../../shared/offchain/abi/IAaveDepositorReceiver';
+import {IPoolDataProviderABI} from '../../../shared/offchain/abi/IPoolDataProvider';
+import {IAaveOracleABI} from '../../../shared/offchain/abi/IAaveOracle';
+import {IERC20ABI} from '../../../shared/offchain/abi/IERC20';
+import {IMulticall3ABI} from '../../../shared/offchain/abi/IMulticall3';
+import {MULTICALL3_ADDRESS} from '../helpers/multicall';
 import {configSchema, type Config} from '../types';
 
 // TestRuntime is typed as RuntimeImpl<unknown>; keep Runtime<Config> for the handler
@@ -63,7 +64,7 @@ type SubCall = {target: Hex; callData: Hex};
 // Multicall3.aggregate3 that fans each sub-call back into the contract mocks registered
 // on the same EvmMock, so the workflow's batched reads hit the per-contract handlers.
 function mockMulticall3(evmMock: EvmMock) {
-  const multicall = addContractMock(evmMock, {address: MULTICALL3_ADDRESS, abi: IMulticall3});
+  const multicall = addContractMock(evmMock, {address: MULTICALL3_ADDRESS, abi: IMulticall3ABI});
   multicall.aggregate3 = (subCalls: unknown) =>
     (subCalls as readonly SubCall[]).map(({target, callData}) => {
       try {
@@ -96,7 +97,7 @@ export function setupBaseEvmMocks(evmMock: EvmMock, options: MockOptions = {}) {
   } = options;
   mockMulticall3(evmMock);
 
-  const dpV3 = addContractMock(evmMock, {address: ADDR.dataProviderV3, abi: IAaveDataProviderV3});
+  const dpV3 = addContractMock(evmMock, {address: ADDR.dataProviderV3, abi: IPoolDataProviderABI});
   dpV3.getAllReservesTokens = () => [
     {symbol: 'USDC', tokenAddress: ADDR.usdc},
     ...extraTokens.map((t, i) => ({symbol: `T${i}`, tokenAddress: t.address})),
@@ -109,20 +110,23 @@ export function setupBaseEvmMocks(evmMock: EvmMock, options: MockOptions = {}) {
     '0x0000000000000000000000000000000000000000',
   ];
 
-  const oracle = addContractMock(evmMock, {address: ADDR.priceOracle, abi: IAavePriceOracle});
+  const oracle = addContractMock(evmMock, {address: ADDR.priceOracle, abi: IAaveOracleABI});
   oracle.getAssetsPrices = (assets: unknown) => (assets as unknown[]).map(() => usdcPrice);
 
-  const usdc = addContractMock(evmMock, {address: ADDR.usdc, abi: IERC20});
+  const usdc = addContractMock(evmMock, {address: ADDR.usdc, abi: IERC20ABI});
   usdc.balanceOf = () => usdcBalance;
   for (const t of extraTokens) {
-    addContractMock(evmMock, {address: t.address, abi: IERC20}).balanceOf = () => t.balance;
+    addContractMock(evmMock, {address: t.address, abi: IERC20ABI}).balanceOf = () => t.balance;
   }
 
-  const usdcAToken = addContractMock(evmMock, {address: ADDR.usdcATokenV3, abi: IERC20});
+  const usdcAToken = addContractMock(evmMock, {address: ADDR.usdcATokenV3, abi: IERC20ABI});
   usdcAToken.totalSupply = () => v3Supply;
 
   // The receiver echoes the encoded calls it is asked to validate.
-  const receiver = addContractMock(evmMock, {address: ADDR.receiver, abi: IAaveDepositorReceiver});
+  const receiver = addContractMock(evmMock, {
+    address: ADDR.receiver,
+    abi: IAaveDepositorReceiverABI,
+  });
   receiver.checkUpkeep = (checkData: unknown) => [true, checkData];
   receiver.FORWARDER = () => ADDR.forwarder;
   receiver.expectedWorkflowId = () => ZERO_WORKFLOW_ID;

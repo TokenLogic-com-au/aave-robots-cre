@@ -11,7 +11,7 @@ import {
 import {shouldSubmit, submitReport, type EvmClient} from '../../shared/offchain/checkUpkeep';
 import {createNetworkHandler} from '../../shared/offchain/network';
 import {type Config, type Result, configSchema} from './types';
-import {IAaveDepositorReceiver} from './abi/IAaveDepositorReceiver';
+import {IAaveDepositorReceiverABI} from '../../shared/offchain/abi/IAaveDepositorReceiver';
 import {fetchSupplyCaps} from './helpers/caps';
 import {parseChainConfig, toTokenSet} from './helpers/config';
 import {buildDepositCalls, depositCandidates} from './helpers/deposits';
@@ -57,12 +57,12 @@ function readReceiver(
     [
       {
         target: receiver,
-        callData: encodeFunctionData({abi: IAaveDepositorReceiver, functionName: 'FORWARDER'}),
+        callData: encodeFunctionData({abi: IAaveDepositorReceiverABI, functionName: 'FORWARDER'}),
       },
       {
         target: receiver,
         callData: encodeFunctionData({
-          abi: IAaveDepositorReceiver,
+          abi: IAaveDepositorReceiverABI,
           functionName: 'expectedWorkflowId',
         }),
       },
@@ -71,10 +71,14 @@ function readReceiver(
   );
   if (!res.ok) return res;
   const forwarder = decodeOrNull(res.value[0], (data) =>
-    decodeFunctionResult({abi: IAaveDepositorReceiver, functionName: 'FORWARDER', data}),
+    decodeFunctionResult({abi: IAaveDepositorReceiverABI, functionName: 'FORWARDER', data}),
   );
   const expectedWorkflowId = decodeOrNull(res.value[1], (data) =>
-    decodeFunctionResult({abi: IAaveDepositorReceiver, functionName: 'expectedWorkflowId', data}),
+    decodeFunctionResult({
+      abi: IAaveDepositorReceiverABI,
+      functionName: 'expectedWorkflowId',
+      data,
+    }),
   );
   if (forwarder === null || expectedWorkflowId === null) {
     return {ok: false, error: 'receiver returned no forwarder / workflow id'};

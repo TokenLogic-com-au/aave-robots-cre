@@ -12,7 +12,8 @@ workflow per chain: Ethereum, Arbitrum, Base, Optimism, Avalanche and Polygon.
 aave-depositor/
 ├── src/
 │   ├── AaveDepositorReceiver.sol         # the robot — inherits WorkflowsBase, permissioned onReport
-│   └── IAaveDepositorReceiver.sol        # robot interface + minimal Roles / Steward interfaces
+│   ├── IAaveDepositorReceiver.sol        # robot interface + minimal Roles / Steward interfaces
+│   └── IAaveProtocolDataProviderV2.sol   # V2 data provider reads (missing from the address book)
 ├── tests/
 │   ├── AaveDepositorReceiver.t.sol       # unit tests (mocked Roles Modifier)
 │   ├── AaveDepositorReceiver.fork.t.sol  # fork test: AFC grants the role, a real depositV3 runs

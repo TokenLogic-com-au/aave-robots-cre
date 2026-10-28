@@ -7,7 +7,10 @@ import {
 import {encodeFunctionData, decodeFunctionResult, zeroAddress, type Hex} from 'viem';
 import type {EvmClient} from '../../../shared/offchain/checkUpkeep';
 import type {Result} from '../types';
-import {IMulticall3, MULTICALL3_ADDRESS} from '../abi/IMulticall3';
+import {IMulticall3ABI} from '../../../shared/offchain/abi/IMulticall3';
+
+// Same address on every chain the workflow runs on.
+export const MULTICALL3_ADDRESS = '0xcA11bde05977b3631167028862bE2a173976CA11' as const;
 
 export type Call = {target: Hex; callData: Hex};
 export type Block = 'finalized' | 'latest';
@@ -59,7 +62,7 @@ export function multicall(
 ): Result<(Hex | null)[]> {
   if (calls.length === 0) return {ok: true, value: []};
   const callData = encodeFunctionData({
-    abi: IMulticall3,
+    abi: IMulticall3ABI,
     functionName: 'aggregate3',
     args: [calls.map((c) => ({target: c.target, allowFailure: true, callData: c.callData}))],
   });
@@ -69,7 +72,7 @@ export function multicall(
     MULTICALL3_ADDRESS,
     callData,
     (data) =>
-      decodeFunctionResult({abi: IMulticall3, functionName: 'aggregate3', data}).map((r) =>
+      decodeFunctionResult({abi: IMulticall3ABI, functionName: 'aggregate3', data}).map((r) =>
         r.success && r.returnData !== '0x' ? r.returnData : null,
       ),
     block,
