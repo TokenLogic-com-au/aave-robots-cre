@@ -4,7 +4,8 @@ import {EvmMock, newTestRuntime, test} from '@chainlink/cre-sdk/test';
 import {bytesToHex, decodeFunctionData, hexToBytes, type Hex} from 'viem';
 
 import {IAaveCREReceiverABI} from '../../shared/offchain/abi/IAaveCREReceiver';
-import {GOVERNANCE_SCHEDULE, MAX_WRITE_GAS} from '../../shared/offchain/constants';
+import {GOVERNANCE_SCHEDULE} from '../../shared/offchain/constants';
+import {maxWriteGasOf} from '../../shared/offchain/network';
 import {chainSelectorOf, checkUpkeepMock} from '../../shared/offchain/testing/mocks';
 import {
   configSchema,
@@ -72,7 +73,7 @@ describe('execution-chain-robot workflow', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     evmMock.callContract = payloadsMock([7, 9]);
     evmMock.estimateGas = (input: EstimateGasInput) => ({
-      gas: estimatedIds(input)[0] === 7 ? MAX_WRITE_GAS : 100_000n,
+      gas: estimatedIds(input)[0] === 7 ? maxWriteGasOf(CHAIN_NAME) : 100_000n,
     });
     let writes = 0;
     evmMock.writeReport = () => {
@@ -107,7 +108,7 @@ describe('execution-chain-robot workflow', () => {
   test('returns "submit skipped" when every payload is skipped', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     evmMock.callContract = payloadsMock([7]);
-    evmMock.estimateGas = () => ({gas: MAX_WRITE_GAS});
+    evmMock.estimateGas = () => ({gas: maxWriteGasOf(CHAIN_NAME)});
     let written = false;
     evmMock.writeReport = () => {
       written = true;
