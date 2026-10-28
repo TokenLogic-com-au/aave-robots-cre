@@ -52,18 +52,16 @@ jobs:
         with:
           node-version: "22"
       - uses: oven-sh/setup-bun@v2
-      - name: Install shared offchain deps
-        working-directory: workflows/shared/offchain
-        run: npm ci
-      - name: Install workflow deps
-        working-directory: workflows/fee-shares-minter/offchain
-        run: npm ci
-      - name: Typecheck
-        working-directory: workflows/fee-shares-minter/offchain
-        run: npm run typecheck
-      - name: Offchain tests
-        working-directory: workflows/fee-shares-minter/offchain
-        run: bun test
+      # Every package is installed first: robot typechecks also compile workflows/shared/offchain.
+      - name: Install offchain deps
+        run: for dir in workflows/*/offchain; do (cd "$dir" && npm ci) || exit 1; done
+      - name: Typecheck and test every offchain workflow
+        run: |
+          for dir in workflows/*/offchain; do
+            echo "::group::$dir"
+            (cd "$dir" && npm run typecheck && npm test) || exit 1
+            echo "::endgroup::"
+          done
 
   abis-up-to-date:
     runs-on: ubuntu-latest
