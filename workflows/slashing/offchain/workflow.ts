@@ -10,7 +10,7 @@ import {
   getEvmClient,
   initCronWorkflow,
 } from '../../shared/offchain/network';
-import {type Config, type NetworkConfig, configSchema} from './types';
+import {type Config, type NetworkConfig, configSchema} from '../../shared/offchain/config';
 
 export {configSchema};
 
