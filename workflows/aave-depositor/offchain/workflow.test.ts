@@ -266,7 +266,7 @@ describe('onCronTrigger deposits', () => {
     expect(onCronTrigger(makeRuntime(BASE_CONFIG))).toBe(SUBMITTED);
     expect(estimateFrom?.toLowerCase()).toBe(ADDR.forwarder.toLowerCase());
     expect(metadata).toBe(WORKFLOW_ID);
-    expect(gasLimit).toBe(MAX_WRITE_GAS);
+    expect(gasLimit).toBeUndefined();
   });
 
   test('returns "submit skipped" when the receiver cannot be read', () => {
