@@ -1,8 +1,8 @@
 import type {Hex} from 'viem';
 
 // Gas quota of a CRE write (`ChainWrite.EVM.TransactionGasLimit`), 2^24 since Chainlink raised
-// it from 10M in October 2026. Requested explicitly so the simulator, which otherwise sizes the
-// write from an estimate, behaves like production.
+// it from 10M in October 2026. `submitReport` skips writes whose estimate doesn't fit it; the
+// write itself sends no gas limit, so the DON applies its default.
 export const MAX_WRITE_GAS = 16_777_216n;
 
 // Forwarder report verification and call overhead on top of `onReport` itself.
