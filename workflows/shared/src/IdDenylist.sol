@@ -10,27 +10,27 @@ import {IIdDenylist} from './IIdDenylist.sol';
 /// @notice Lets the owner or guardian exclude single ids from automation, e.g. a proposal the
 /// robot should leave alone. Mixed into a `WorkflowsBase` robot next to its global switch.
 /// @dev Not a `WorkflowsBase` itself so it combines with `GasCappedWorkflowsBase` without
-/// override boilerplate. Robots skip ids for which `isDisabled(id)` holds in both
+/// override boilerplate. Robots skip ids for which `isIdDisabled(id)` holds in both
 /// `_checkUpkeep` and `_onReport`.
 abstract contract IdDenylist is OwnableWithGuardian, IIdDenylist {
   mapping(uint256 id => bool) internal _disabledIds;
 
   /// @inheritdoc IIdDenylist
-  function enableAutomation(uint256 id) external onlyOwner {
-    require(_disabledIds[id], AutomationStatusUnchanged(id));
+  function enableId(uint256 id) external onlyOwner {
+    require(_disabledIds[id], IdStatusUnchanged(id));
     _disabledIds[id] = false;
-    emit AutomationDisabled(id, false);
+    emit IdDisabled(id, false);
   }
 
   /// @inheritdoc IIdDenylist
-  function disableAutomation(uint256 id) external onlyOwnerOrGuardian {
-    require(!_disabledIds[id], AutomationStatusUnchanged(id));
+  function disableId(uint256 id) external onlyOwnerOrGuardian {
+    require(!_disabledIds[id], IdStatusUnchanged(id));
     _disabledIds[id] = true;
-    emit AutomationDisabled(id, true);
+    emit IdDisabled(id, true);
   }
 
   /// @inheritdoc IIdDenylist
-  function isDisabled(uint256 id) public view returns (bool) {
+  function isIdDisabled(uint256 id) public view returns (bool) {
     return _disabledIds[id];
   }
 }

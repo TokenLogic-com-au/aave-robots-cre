@@ -22,55 +22,53 @@ contract IdDenylistTest is Test {
     robot = new MockIdDenylistRobot(address(0), 0, owner, guardian);
   }
 
-  function test_fuzz_disableAutomation_byOwnerOrGuardian(bool byOwner, uint256 id) public {
+  function test_fuzz_disableId_byOwnerOrGuardian(bool byOwner, uint256 id) public {
     vm.expectEmit(address(robot));
-    emit IIdDenylist.AutomationDisabled(id, true);
+    emit IIdDenylist.IdDisabled(id, true);
     vm.prank(byOwner ? owner : guardian);
-    robot.disableAutomation(id);
+    robot.disableId(id);
 
-    assertTrue(robot.isDisabled(id), 'id should be disabled');
+    assertTrue(robot.isIdDisabled(id), 'id should be disabled');
     assertFalse(robot.isDisabled(), 'robot should stay enabled');
   }
 
-  function test_disableAutomation_revertsWith_OnlyGuardianOrOwnerInvalidCaller() public {
+  function test_disableId_revertsWith_OnlyGuardianOrOwnerInvalidCaller() public {
     vm.expectRevert(
       abi.encodeWithSelector(IWithGuardian.OnlyGuardianOrOwnerInvalidCaller.selector, anyone)
     );
     vm.prank(anyone);
-    robot.disableAutomation(1);
+    robot.disableId(1);
   }
 
-  function test_disableAutomation_revertsWith_AutomationStatusUnchanged() public {
+  function test_disableId_revertsWith_IdStatusUnchanged() public {
     _disable(1);
-    vm.expectRevert(abi.encodeWithSelector(IIdDenylist.AutomationStatusUnchanged.selector, 1));
+    vm.expectRevert(abi.encodeWithSelector(IIdDenylist.IdStatusUnchanged.selector, 1));
     vm.prank(guardian);
-    robot.disableAutomation(1);
+    robot.disableId(1);
   }
 
-  function test_enableAutomation_byOwner() public {
+  function test_enableId_byOwner() public {
     _disable(1);
     vm.expectEmit(address(robot));
-    emit IIdDenylist.AutomationDisabled(1, false);
+    emit IIdDenylist.IdDisabled(1, false);
     vm.prank(owner);
-    robot.enableAutomation(1);
+    robot.enableId(1);
 
-    assertFalse(robot.isDisabled(1), 'id should be enabled');
+    assertFalse(robot.isIdDisabled(1), 'id should be enabled');
   }
 
-  function test_fuzz_enableAutomation_revertsWith_OwnableUnauthorizedAccount(
-    bool byGuardian
-  ) public {
+  function test_fuzz_enableId_revertsWith_OwnableUnauthorizedAccount(bool byGuardian) public {
     _disable(1);
     address caller = byGuardian ? guardian : anyone;
     vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, caller));
     vm.prank(caller);
-    robot.enableAutomation(1);
+    robot.enableId(1);
   }
 
-  function test_enableAutomation_revertsWith_AutomationStatusUnchanged() public {
-    vm.expectRevert(abi.encodeWithSelector(IIdDenylist.AutomationStatusUnchanged.selector, 1));
+  function test_enableId_revertsWith_IdStatusUnchanged() public {
+    vm.expectRevert(abi.encodeWithSelector(IIdDenylist.IdStatusUnchanged.selector, 1));
     vm.prank(owner);
-    robot.enableAutomation(1);
+    robot.enableId(1);
   }
 
   function test_globalAndIdSwitches_areIndependent() public {
@@ -81,7 +79,7 @@ contract IdDenylistTest is Test {
     robot.enableAutomation();
 
     assertFalse(robot.isDisabled(), 'robot should be enabled');
-    assertTrue(robot.isDisabled(1), 'id should stay disabled');
+    assertTrue(robot.isIdDisabled(1), 'id should stay disabled');
   }
 
   function test_checkUpkeep_skipsDisabledIds() public {
@@ -111,7 +109,7 @@ contract IdDenylistTest is Test {
 
   function _disable(uint256 id) internal {
     vm.prank(guardian);
-    robot.disableAutomation(id);
+    robot.disableId(id);
   }
 
   function _ids(uint256 a, uint256 b) internal pure returns (uint256[] memory ids) {

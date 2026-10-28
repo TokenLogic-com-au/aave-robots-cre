@@ -56,7 +56,7 @@ contract MockIdDenylistRobot is GasCappedWorkflowsBase, IdDenylist {
   function _onReport(bytes calldata, bytes calldata report) internal override {
     uint256[] memory ids = abi.decode(report, (uint256[]));
     for (uint256 i = 0; i < ids.length; i++) {
-      if (!isDisabled(ids[i])) emit Executed(ids[i]);
+      if (!isIdDisabled(ids[i])) emit Executed(ids[i]);
     }
   }
 
@@ -67,7 +67,7 @@ contract MockIdDenylistRobot is GasCappedWorkflowsBase, IdDenylist {
     uint256[] memory buffer = new uint256[](ids.length);
     uint256 count = 0;
     for (uint256 i = 0; i < ids.length; i++) {
-      if (!isDisabled(ids[i])) buffer[count++] = ids[i];
+      if (!isIdDisabled(ids[i])) buffer[count++] = ids[i];
     }
     uint256[] memory enabled = new uint256[](count);
     for (uint256 i = 0; i < count; i++) enabled[i] = buffer[i];
