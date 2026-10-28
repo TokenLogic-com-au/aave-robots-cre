@@ -106,7 +106,7 @@ describe('gsm-fee-claimer workflow', () => {
     };
 
     expect(handle(newTestRuntime() as never)).toBe(`fees distributed, tx=${TX_HASH}`);
-    expect(gasLimit).toBe(MAX_WRITE_GAS);
+    expect(gasLimit).toBeUndefined();
   });
 
   test('returns "submit skipped" and logs when writeReport is not SUCCESS', () => {

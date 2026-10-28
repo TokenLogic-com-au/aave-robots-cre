@@ -27,9 +27,8 @@ accrue until the next run.
 
 The workflow writes through the shared `submitReport`, which uses `eth_estimateGas` only
 to skip a write that would revert or not fit the CRE quota with the forwarder overhead,
-and requests the full quota (`MAX_WRITE_GAS`) for the write itself so the simulator and
-production behave the same. Gas is only paid for what the
-transaction uses.
+and sends no `gasConfig` with the write, so in production the DON applies its default
+limit, the CRE quota (the simulator estimates instead).
 
 ## Setup
 
