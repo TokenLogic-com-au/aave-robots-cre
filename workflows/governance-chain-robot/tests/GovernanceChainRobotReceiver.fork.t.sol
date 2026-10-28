@@ -192,7 +192,7 @@ contract GovernanceChainRobotReceiverForkTest is Test {
   function test_fork_checkUpkeep_skipsDisabledProposal() public {
     _warpPastVotingCooldown(CREATED_PROPOSAL);
     vm.prank(GovernanceV3Ethereum.GOVERNANCE_GUARDIAN);
-    robot.disableAutomation(CREATED_PROPOSAL);
+    robot.disableId(CREATED_PROPOSAL);
 
     (bool needed, ) = robot.checkUpkeep('');
     assertFalse(needed, 'disabled proposal returned');
