@@ -24,7 +24,7 @@ import {
   MAX_REPORTS_PER_RUN,
   onCronTrigger,
 } from './workflow';
-import {MAX_WRITE_GAS} from '../../shared/offchain/constants';
+import {maxWriteGasOf} from '../../shared/offchain/network';
 import {chainSelectorOf} from '../../shared/offchain/testing/mocks';
 import {
   ADDR,
@@ -297,7 +297,7 @@ describe('onCronTrigger deposits', () => {
   test('returns "submit skipped" when the estimate exceeds the max write gas', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     setupBaseEvmMocks(evmMock);
-    evmMock.estimateGas = () => ({gas: MAX_WRITE_GAS + 1n});
+    evmMock.estimateGas = () => ({gas: maxWriteGasOf(CHAIN_NAME) + 1n});
     const runtime = makeRuntime(BASE_CONFIG);
     expect(onCronTrigger(runtime)).toBe('submit skipped');
     expect(runtime.getLogs().join('\n')).toContain('exceeds max write gas');
