@@ -10,10 +10,10 @@ import {
 } from 'viem';
 import type {EvmClient} from '../../../shared/offchain/checkUpkeep';
 import type {Result} from '../types';
-import {IAaveDataProviderV2} from '../abi/IAaveDataProviderV2';
-import {IAaveDataProviderV3} from '../abi/IAaveDataProviderV3';
-import {IAavePriceOracle} from '../abi/IAavePriceOracle';
-import {IERC20} from '../abi/IERC20';
+import {IAaveProtocolDataProviderV2ABI} from '../../../shared/offchain/abi/IAaveProtocolDataProviderV2';
+import {IPoolDataProviderABI} from '../../../shared/offchain/abi/IPoolDataProvider';
+import {IAaveOracleABI} from '../../../shared/offchain/abi/IAaveOracle';
+import {IERC20ABI} from '../../../shared/offchain/abi/IERC20';
 import {readAndDecode, type Call} from './multicall';
 
 export type ReserveConfig = {decimals: bigint; isActive: boolean; isFrozen: boolean};
@@ -27,10 +27,10 @@ export function getAllReservesTokens(
     runtime,
     evmClient,
     dataProviderV3,
-    encodeFunctionData({abi: IAaveDataProviderV3, functionName: 'getAllReservesTokens'}),
+    encodeFunctionData({abi: IPoolDataProviderABI, functionName: 'getAllReservesTokens'}),
     (data) =>
       decodeFunctionResult({
-        abi: IAaveDataProviderV3,
+        abi: IPoolDataProviderABI,
         functionName: 'getAllReservesTokens',
         data,
       }).map((r) => r.tokenAddress),
@@ -47,9 +47,9 @@ export function getAssetsPrices(
     runtime,
     evmClient,
     priceOracle,
-    encodeFunctionData({abi: IAavePriceOracle, functionName: 'getAssetsPrices', args: [assets]}),
+    encodeFunctionData({abi: IAaveOracleABI, functionName: 'getAssetsPrices', args: [assets]}),
     (data) => [
-      ...decodeFunctionResult({abi: IAavePriceOracle, functionName: 'getAssetsPrices', data}),
+      ...decodeFunctionResult({abi: IAaveOracleABI, functionName: 'getAssetsPrices', data}),
     ],
   );
 }
@@ -58,7 +58,7 @@ export const calls = {
   reserveConfig: (dataProviderV3: Address, asset: Address): Call => ({
     target: dataProviderV3,
     callData: encodeFunctionData({
-      abi: IAaveDataProviderV3,
+      abi: IPoolDataProviderABI,
       functionName: 'getReserveConfigurationData',
       args: [asset],
     }),
@@ -66,7 +66,7 @@ export const calls = {
   reserveCaps: (dataProviderV3: Address, asset: Address): Call => ({
     target: dataProviderV3,
     callData: encodeFunctionData({
-      abi: IAaveDataProviderV3,
+      abi: IPoolDataProviderABI,
       functionName: 'getReserveCaps',
       args: [asset],
     }),
@@ -74,7 +74,7 @@ export const calls = {
   reserveAToken: (dataProviderV3: Address, asset: Address): Call => ({
     target: dataProviderV3,
     callData: encodeFunctionData({
-      abi: IAaveDataProviderV3,
+      abi: IPoolDataProviderABI,
       functionName: 'getReserveTokensAddresses',
       args: [asset],
     }),
@@ -82,7 +82,7 @@ export const calls = {
   v2ReserveAToken: (dataProviderV2: Address, asset: Address): Call => ({
     target: dataProviderV2,
     callData: encodeFunctionData({
-      abi: IAaveDataProviderV2,
+      abi: IAaveProtocolDataProviderV2ABI,
       functionName: 'getReserveTokensAddresses',
       args: [asset],
     }),
@@ -90,38 +90,42 @@ export const calls = {
   v2ReserveLiquidity: (dataProviderV2: Address, asset: Address): Call => ({
     target: dataProviderV2,
     callData: encodeFunctionData({
-      abi: IAaveDataProviderV2,
+      abi: IAaveProtocolDataProviderV2ABI,
       functionName: 'getReserveData',
       args: [asset],
     }),
   }),
   balanceOf: (token: Address, account: Address): Call => ({
     target: token,
-    callData: encodeFunctionData({abi: IERC20, functionName: 'balanceOf', args: [account]}),
+    callData: encodeFunctionData({abi: IERC20ABI, functionName: 'balanceOf', args: [account]}),
   }),
   totalSupply: (token: Address): Call => ({
     target: token,
-    callData: encodeFunctionData({abi: IERC20, functionName: 'totalSupply'}),
+    callData: encodeFunctionData({abi: IERC20ABI, functionName: 'totalSupply'}),
   }),
 };
 
 export const decode = {
   reserveConfig: (data: Hex): ReserveConfig => {
     const d = decodeFunctionResult({
-      abi: IAaveDataProviderV3,
+      abi: IPoolDataProviderABI,
       functionName: 'getReserveConfigurationData',
       data,
     });
     return {decimals: d[0], isActive: d[8], isFrozen: d[9]};
   },
   supplyCap: (data: Hex): bigint =>
-    decodeFunctionResult({abi: IAaveDataProviderV3, functionName: 'getReserveCaps', data})[1],
+    decodeFunctionResult({abi: IPoolDataProviderABI, functionName: 'getReserveCaps', data})[1],
   // V2 and V3 `getReserveTokensAddresses` share the (aToken, stableDebt, variableDebt) shape.
   aToken: (data: Hex): Address | null => {
     const [aToken] = decodeAbiParameters(parseAbiParameters('address, address, address'), data);
     return aToken === zeroAddress ? null : aToken;
   },
   v2ReserveLiquidity: (data: Hex): bigint =>
-    decodeFunctionResult({abi: IAaveDataProviderV2, functionName: 'getReserveData', data})[0],
+    decodeFunctionResult({
+      abi: IAaveProtocolDataProviderV2ABI,
+      functionName: 'getReserveData',
+      data,
+    })[0],
   uint: (data: Hex): bigint => decodeAbiParameters(parseAbiParameters('uint256'), data)[0],
 };

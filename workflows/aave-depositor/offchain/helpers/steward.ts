@@ -1,6 +1,6 @@
 import type {Runtime} from '@chainlink/cre-sdk';
 import {encodeFunctionData, type Hex} from 'viem';
-import {ISteward} from '../abi/ISteward';
+import {IPoolExposureStewardABI} from '../../../shared/offchain/abi/IPoolExposureSteward';
 import {applySupplyCapAdjustment, type SupplyCaps} from './caps';
 import {destinationPool, type ChainConfig} from './config';
 import {calculateUsdValue} from './math';
@@ -40,14 +40,14 @@ export function stewardCall(
   if (operation === 'deposit') {
     runtime.log(`  -> Deposit ${formatUsd(usd)} of ${key} into ${label} pool`);
     return encodeFunctionData({
-      abi: ISteward,
+      abi: IPoolExposureStewardABI,
       functionName: 'depositV3',
       args: [pool, token, capped],
     });
   }
   runtime.log(`  -> Migrate ${formatUsd(usd)} of ${key} V2 -> V3 ${label} pool`);
   return encodeFunctionData({
-    abi: ISteward,
+    abi: IPoolExposureStewardABI,
     functionName: 'migrateV2toV3',
     args: [chain.v2!.corePool, pool, token, capped],
   });

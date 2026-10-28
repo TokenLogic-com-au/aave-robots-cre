@@ -16,7 +16,6 @@ Avalanche, Polygon.
 | `workflow.ts`          | `initWorkflow` (one cron handler) + `onCronTrigger`.                                                                                                      |
 | `types.ts`             | Zod config schema (shared `networkSchema` extended, single chain).                                                                                        |
 | `helpers/`             | `reserves` + `caps` (batched reads), `deposits` + `migrations` (candidates), `steward` (call encoding), `multicall`, `reads`, `config`, `math`, `format`. |
-| `abi/`                 | Vendored ABIs for the Aave data providers, oracle, Steward, Multicall3.                                                                                   |
 | `config.ethereum.json` | Ethereum mainnet config. `receiver` is filled in after deploy.                                                                                            |
 | `workflow.test.ts`     | `bun test` unit suite (mocked cre-sdk EVM client).                                                                                                        |
 

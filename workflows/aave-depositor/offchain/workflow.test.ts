@@ -12,10 +12,10 @@ import {
   type Hex,
 } from 'viem';
 
-import {IAaveDataProviderV2} from './abi/IAaveDataProviderV2';
-import {IAaveDepositorReceiver} from './abi/IAaveDepositorReceiver';
-import {IERC20} from './abi/IERC20';
-import {ISteward} from './abi/ISteward';
+import {IAaveProtocolDataProviderV2ABI} from '../../shared/offchain/abi/IAaveProtocolDataProviderV2';
+import {IAaveDepositorReceiverABI} from '../../shared/offchain/abi/IAaveDepositorReceiver';
+import {IERC20ABI} from '../../shared/offchain/abi/IERC20';
+import {IPoolExposureStewardABI} from '../../shared/offchain/abi/IPoolExposureSteward';
 import {configSchema} from './types';
 import {
   chunkCalls,
@@ -64,10 +64,13 @@ const WORKFLOW_ID = `0x${'ab'.repeat(32)}` as Hex;
 const SUBMITTED = `1 report(s) submitted, tx=${TX_HASH}`;
 
 function mockV2(evmMock: EvmMock, aTokenBalance: bigint, availableLiquidity: bigint) {
-  const dpV2 = addContractMock(evmMock, {address: ADDR.dataProviderV2, abi: IAaveDataProviderV2});
+  const dpV2 = addContractMock(evmMock, {
+    address: ADDR.dataProviderV2,
+    abi: IAaveProtocolDataProviderV2ABI,
+  });
   dpV2.getReserveTokensAddresses = () => [ADDR.usdcATokenV2, ZERO, ZERO];
   dpV2.getReserveData = () => [availableLiquidity, 0n, 0n, 0n, 0n, 0n, 0n, 0n, 0n, 0];
-  const aToken = addContractMock(evmMock, {address: ADDR.usdcATokenV2, abi: IERC20});
+  const aToken = addContractMock(evmMock, {address: ADDR.usdcATokenV2, abi: IERC20ABI});
   aToken.balanceOf = () => aTokenBalance;
 }
 
@@ -83,7 +86,7 @@ function captureChecks(receiver: ReturnType<typeof setupBaseEvmMocks>['receiver'
 
 function decodeCalls(checkData: Hex) {
   const [calls] = decodeAbiParameters(parseAbiParameters('bytes[]'), checkData);
-  return calls.map((c) => decodeFunctionData({abi: ISteward, data: c}));
+  return calls.map((c) => decodeFunctionData({abi: IPoolExposureStewardABI, data: c}));
 }
 
 describe('config', () => {
@@ -253,7 +256,7 @@ describe('onCronTrigger deposits', () => {
     evmMock.estimateGas = (input) => {
       estimateFrom = replyToHex(input.msg!.from);
       const {args} = decodeFunctionData({
-        abi: IAaveDepositorReceiver,
+        abi: IAaveDepositorReceiverABI,
         data: replyToHex(input.msg!.data),
       });
       metadata = args![0] as Hex;
