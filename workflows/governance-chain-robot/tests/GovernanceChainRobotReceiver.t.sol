@@ -248,7 +248,7 @@ contract GovernanceChainRobotReceiverTest is Test {
     _activatable(0);
     for (uint256 i = 1; i <= maxSkip + 1; i++) _final(i);
     vm.prank(guardian);
-    robot.disableAutomation(maxSkip + 1);
+    robot.disableId(maxSkip + 1);
 
     (bool needed, bytes memory performData) = robot.checkUpkeep('');
     assertTrue(needed, 'disabled final proposal counted as a skip');
@@ -263,13 +263,13 @@ contract GovernanceChainRobotReceiverTest is Test {
     _activatable(split + 1);
     for (uint256 i = split + 2; i <= maxSkip + 2; i++) _final(i);
     vm.prank(guardian);
-    robot.disableAutomation(split + 1);
+    robot.disableId(split + 1);
 
     (bool needed, ) = robot.checkUpkeep('');
     assertFalse(needed, 'disabled proposal reset the skip count');
 
     vm.prank(owner);
-    robot.enableAutomation(split + 1);
+    robot.enableId(split + 1);
     (bool neededOnceEnabled, bytes memory performData) = robot.checkUpkeep('');
     assertTrue(neededOnceEnabled, 'enabled proposal not picked');
     IGovernanceChainRobotReceiver.ActionWithId[] memory actions = _decode(performData);
@@ -310,7 +310,7 @@ contract GovernanceChainRobotReceiverTest is Test {
     _activatable(1);
     (, bytes memory performData) = robot.checkUpkeep('');
     vm.prank(guardian);
-    robot.disableAutomation(1);
+    robot.disableId(1);
 
     vm.prank(anyone);
     robot.onReport('', performData);

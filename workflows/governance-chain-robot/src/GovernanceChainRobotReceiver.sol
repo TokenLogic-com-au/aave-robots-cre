@@ -57,7 +57,7 @@ contract GovernanceChainRobotReceiver is
 
     for (uint256 i = actions.length; i > 0; i--) {
       ActionWithId memory a = actions[i - 1];
-      if (isDisabled(a.id) || !_canPerform(GOVERNANCE.getProposal(a.id), a.action)) continue;
+      if (isIdDisabled(a.id) || !_canPerform(GOVERNANCE.getProposal(a.id), a.action)) continue;
 
       (bool success, bytes memory reason) = address(GOVERNANCE).call(_calldata(a));
       if (success) {
@@ -83,7 +83,7 @@ contract GovernanceChainRobotReceiver is
 
     while (index != 0 && skipCount <= MAX_SKIP && count < MAX_ACTIONS) {
       uint256 id = --index;
-      if (isDisabled(id)) continue;
+      if (isIdDisabled(id)) continue;
 
       IGovernanceCore.Proposal memory proposal = GOVERNANCE.getProposal(id);
       if (_isProposalInFinalState(proposal.state)) {

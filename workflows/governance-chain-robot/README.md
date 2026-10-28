@@ -67,9 +67,9 @@ fees), so the robot needs no role or funds.
 From the shared base:
 
 - `disableAutomation()` (owner or guardian) / `enableAutomation()` (owner) — the whole robot.
-- `disableAutomation(id)` (owner or guardian) / `enableAutomation(id)` (owner) — a single
-  proposal; new proposals are automated by default. Revert `AutomationStatusUnchanged` when
-  the status doesn't change and emit `AutomationDisabled(id, disabled)`.
+- `disableId(id)` (owner or guardian) / `enableId(id)` (owner) — a single
+  proposal; new proposals are automated by default. Revert `IdStatusUnchanged` when
+  the status doesn't change and emit `IdDisabled(id, disabled)`.
 - `setMaxGasPrice(maxGasPrice)` — owner or guardian, so the cap can be tuned without a vote.
   `setMaxGasPrice(0)` is the guardian's emergency pause: the constructor rejects 0 to catch
   deploy mistakes, the setter allows it on purpose. The constructor also requires a gas price
