@@ -11,11 +11,6 @@
     "forceConsistentCasingInFileNames": true,
     "types": []
   },
-  "include": [
-    "main.ts",
-    "workflow.ts",
-    "types.ts",
-    "../../shared/offchain/**/*.ts"
-  ],
+  "include": ["main.ts", "workflow.ts", "../../shared/offchain/**/*.ts"],
   "exclude": ["../../shared/offchain/tests"]
 }
