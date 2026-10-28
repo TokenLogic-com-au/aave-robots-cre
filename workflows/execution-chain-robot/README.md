@@ -80,7 +80,7 @@ come from the shared base (see the [root README](../../README.md)):
 
 - `disableAutomation()` (owner or guardian) / `enableAutomation()` (owner) — stops / resumes
   the whole robot.
-- `disableAutomation(id)` (owner or guardian) / `enableAutomation(id)` (owner) — excludes a
+- `disableId(id)` (owner or guardian) / `enableId(id)` (owner) — excludes a
   single payload, e.g. one that keeps reverting. Every payload is covered by default, since
   governance keeps creating them.
 - `setMaxGasPrice(maxGasPrice)` — owner or guardian, so the cap can follow the gas market

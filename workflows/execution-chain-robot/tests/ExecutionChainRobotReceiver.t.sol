@@ -87,7 +87,7 @@ contract ExecutionChainRobotReceiverTest is Test {
     _mockPayload(0, state, queuedAt);
     if (disabled) {
       vm.prank(guardian);
-      robot.disableAutomation(0);
+      robot.disableId(0);
     }
 
     (bool needed, bytes memory performData) = robot.checkUpkeep('');
@@ -215,7 +215,7 @@ contract ExecutionChainRobotReceiverTest is Test {
     for (uint40 i = 1; i < total; i++) {
       _mockExecutable(i);
       vm.prank(guardian);
-      robot.disableAutomation(i);
+      robot.disableId(i);
     }
 
     (, bytes memory performData) = robot.checkUpkeep('');
@@ -234,8 +234,8 @@ contract ExecutionChainRobotReceiverTest is Test {
     _mockExecutePayload(0);
     _mockExecutePayload(1);
     vm.startPrank(guardian);
-    if (disabledA) robot.disableAutomation(0);
-    if (disabledB) robot.disableAutomation(1);
+    if (disabledA) robot.disableId(0);
+    if (disabledB) robot.disableId(1);
     vm.stopPrank();
 
     bool runA = executableA && !disabledA;

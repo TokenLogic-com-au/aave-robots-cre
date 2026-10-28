@@ -62,7 +62,7 @@ contract ExecutionChainRobotReceiver is
 
     for (uint256 i = 0; i < payloadIds.length; i++) {
       uint40 payloadId = payloadIds[i];
-      if (isDisabled(payloadId) || !_canPayloadBeExecuted(payloadId)) continue;
+      if (isIdDisabled(payloadId) || !_canPayloadBeExecuted(payloadId)) continue;
       PAYLOADS_CONTROLLER.executePayload(payloadId);
       executed = true;
       emit ActionSucceeded(payloadId);
@@ -90,7 +90,7 @@ contract ExecutionChainRobotReceiver is
     ) {
       index--;
       scanned++;
-      if (isDisabled(index)) continue;
+      if (isIdDisabled(index)) continue;
 
       // `getPayloadState` copies the whole payload, so junk with large actions could otherwise
       // push checkUpkeep past the eth_call gas cap.
