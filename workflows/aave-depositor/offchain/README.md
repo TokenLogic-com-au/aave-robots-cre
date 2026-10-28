@@ -52,8 +52,8 @@ The receiver only accepts reports from the CRE forwarder, so the workflow reads
 `submitReport` as `{from, metadata}`, which estimates `onReport` as the forwarder would
 call it. The estimate only gates the write: a revert (role not granted, bad selector) or
 an estimate that doesn't fit the CRE quota with the forwarder overhead skips the batch
-with a log. The write itself requests the full quota (`MAX_WRITE_GAS`), so the simulator
-and production behave the same; gas is only paid for what the transaction uses. Measured on
+with a log. The write sends no `gasConfig`, so in production the DON applies its default
+limit, the CRE quota (the simulator estimates instead). Measured on
 a mainnet fork: ~300k per deposit, ~750k per V2 to V3 migration, hence at most 8 calls
 per report.
 
