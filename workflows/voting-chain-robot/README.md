@@ -79,7 +79,7 @@ From the shared base (see the [root README](../../README.md)):
 
 - `disableAutomation()` / `enableAutomation()` — the global switch. While disabled
   `checkUpkeep` reports nothing and `onReport` reverts `AutomationIsDisabled`.
-- `disableAutomation(id)` / `enableAutomation(id)` — the per-proposal denylist: new
+- `disableId(id)` / `enableId(id)` — the per-proposal denylist: new
   proposals need no configuration, disabled ones are skipped by `checkUpkeep` and `onReport`.
 - `setMaxGasPrice(maxGasPrice)` — owner or guardian, Ethereum only. `setMaxGasPrice(0)` is
   the guardian's emergency pause there.
