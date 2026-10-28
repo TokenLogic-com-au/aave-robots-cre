@@ -59,7 +59,7 @@ come from `WorkflowsBase`. On top of it, single reserves can be excluded:
   disabled.
 - `disableReserve(reserve)` — owner or guardian. Reverts `ReserveStatusUnchanged` if
   already disabled.
-- Both emit `ReserveDisabled(reserve, disabled)`; `isDisabled(reserve)` reads the status.
+- Both emit `ReserveDisabled(reserve, disabled)`; `isReserveDisabled(reserve)` reads the status.
 
 ## Testing
 

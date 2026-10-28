@@ -232,13 +232,13 @@ contract SlashingReceiverTest is Test {
 
     vm.prank(owner);
     robot.disableReserve(reserveA);
-    assertTrue(robot.isDisabled(reserveA), 'reserve not disabled');
+    assertTrue(robot.isReserveDisabled(reserveA), 'reserve not disabled');
   }
 
   function test_disableReserve_byGuardian() public {
     vm.prank(guardian);
     robot.disableReserve(reserveA);
-    assertTrue(robot.isDisabled(reserveA), 'reserve not disabled');
+    assertTrue(robot.isReserveDisabled(reserveA), 'reserve not disabled');
   }
 
   function test_disableReserve_revertsWith_NotOwnerOrGuardian() public {
@@ -269,7 +269,7 @@ contract SlashingReceiverTest is Test {
 
     vm.prank(owner);
     robot.enableReserve(reserveA);
-    assertFalse(robot.isDisabled(reserveA), 'reserve still disabled');
+    assertFalse(robot.isReserveDisabled(reserveA), 'reserve still disabled');
   }
 
   function test_enableReserve_revertsWhenCalledByGuardian() public {

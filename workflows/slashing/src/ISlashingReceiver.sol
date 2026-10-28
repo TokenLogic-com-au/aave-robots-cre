@@ -48,7 +48,7 @@ interface ISlashingReceiver is IWorkflowsBase {
 
   /// @notice Whether a reserve is excluded from automation.
   /// @param reserve The reserve to query.
-  function isDisabled(address reserve) external view returns (bool);
+  function isReserveDisabled(address reserve) external view returns (bool);
 
   /// @notice The Umbrella coordinator this robot slashes through.
   function UMBRELLA() external view returns (IUmbrella);
