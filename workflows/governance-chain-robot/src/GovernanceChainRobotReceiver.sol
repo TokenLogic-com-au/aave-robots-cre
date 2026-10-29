@@ -49,14 +49,16 @@ contract GovernanceChainRobotReceiver is
     GOVERNANCE = IGovernanceCore(governance_);
   }
 
-  /// @dev Oldest proposal first; skips disabled or stale actions and logs a reverting call as
-  /// `ActionFailed`. Reverts `NoActionCanBePerformed` if nothing was performed.
+  /// @dev In report order, oldest proposal first; skips disabled or stale actions and logs a
+  /// reverting call as `ActionFailed`. Reverts `NoActionCanBePerformed` if nothing was performed.
   function _onReport(bytes calldata /* metadata */, bytes calldata report) internal override {
     ActionWithId[] memory actions = abi.decode(report, (ActionWithId[]));
     bool performed = false;
 
-    for (uint256 i = actions.length; i > 0; i--) {
-      ActionWithId memory a = actions[i - 1];
+    for (uint256 i = 0; i < actions.length; i++) {
+      ActionWithId memory a = actions[i];
+      // The report lands in a later block than `checkUpkeep`, so the proposal may have been
+      // disabled or changed state since.
       if (isIdDisabled(a.id) || !_canPerform(GOVERNANCE.getProposal(a.id), a.action)) continue;
 
       (bool success, bytes memory reason) = address(GOVERNANCE).call(_calldata(a));
@@ -73,6 +75,7 @@ contract GovernanceChainRobotReceiver is
 
   /// @dev Walks back from the latest proposal until `MAX_SKIP + 1` consecutive final proposals
   /// (disabled ones are ignored) or `MAX_ACTIONS` actions. Cancel wins over activate, then execute.
+  /// Returns the actions oldest proposal first.
   function _checkUpkeep(
     bytes calldata /* checkData */
   ) internal view override returns (bool, bytes memory) {
@@ -103,7 +106,7 @@ contract GovernanceChainRobotReceiver is
     if (count == 0) return (false, '');
 
     ActionWithId[] memory actions = new ActionWithId[](count);
-    for (uint256 i = 0; i < count; i++) actions[i] = buffer[i];
+    for (uint256 i = 0; i < count; i++) actions[i] = buffer[count - 1 - i];
     return (true, abi.encode(actions));
   }
 
@@ -113,7 +116,8 @@ contract GovernanceChainRobotReceiver is
   ) internal view returns (bool) {
     if (action == ProposalAction.PerformCancel) return _canProposalBeCancelled(proposal);
     if (action == ProposalAction.PerformActivateVoting) return _canVotingBeActivated(proposal);
-    return _canProposalBeExecuted(proposal);
+    if (action == ProposalAction.PerformExecute) return _canProposalBeExecuted(proposal);
+    return false;
   }
 
   /// @dev Open and the creator's power is not above the minimum, when `cancelProposal` is open

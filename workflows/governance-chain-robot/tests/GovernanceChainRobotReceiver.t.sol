@@ -208,7 +208,7 @@ contract GovernanceChainRobotReceiverTest is Test {
     assertEq(uint8(_state(0)), uint8(expectedState), 'action not performed');
   }
 
-  function test_checkUpkeep_capsAtMaxActions_newestFirst() public {
+  function test_checkUpkeep_capsAtMaxActions_latestProposalsOldestFirst() public {
     uint256 total = robot.MAX_ACTIONS() + 2;
     for (uint256 i = 0; i < total; i++) _activatable(i);
 
@@ -217,7 +217,7 @@ contract GovernanceChainRobotReceiverTest is Test {
     IGovernanceChainRobotReceiver.ActionWithId[] memory actions = _decode(performData);
     assertEq(actions.length, robot.MAX_ACTIONS(), 'should cap at MAX_ACTIONS');
     for (uint256 i = 0; i < actions.length; i++) {
-      assertEq(actions[i].id, total - 1 - i, 'should scan from the latest proposal');
+      assertEq(actions[i].id, total - actions.length + i, 'should pick the latest, oldest first');
     }
   }
 
@@ -274,8 +274,8 @@ contract GovernanceChainRobotReceiverTest is Test {
     assertTrue(neededOnceEnabled, 'enabled proposal not picked');
     IGovernanceChainRobotReceiver.ActionWithId[] memory actions = _decode(performData);
     assertEq(actions.length, 2, 'enabled proposal should reset the skip count');
-    assertEq(actions[0].id, split + 1, 'enabled proposal not first');
-    assertEq(actions[1].id, 0, 'oldest proposal not reached');
+    assertEq(actions[0].id, 0, 'oldest proposal not reached');
+    assertEq(actions[1].id, split + 1, 'enabled proposal not picked');
   }
 
   // --- onReport ---
@@ -376,8 +376,8 @@ contract GovernanceChainRobotReceiverTest is Test {
     robot.onReport(
       '',
       _encode(
-        _action(1, IGovernanceChainRobotReceiver.ProposalAction.PerformActivateVoting),
-        _action(0, action)
+        _action(0, action),
+        _action(1, IGovernanceChainRobotReceiver.ProposalAction.PerformActivateVoting)
       )
     );
   }

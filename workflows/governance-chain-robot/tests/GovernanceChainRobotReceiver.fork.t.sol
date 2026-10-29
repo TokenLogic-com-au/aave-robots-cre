@@ -117,12 +117,12 @@ contract GovernanceChainRobotReceiverForkTest is Test {
     IGovernanceChainRobotReceiver.ActionWithId[]
       memory expected = new IGovernanceChainRobotReceiver.ActionWithId[](2);
     expected[0] = IGovernanceChainRobotReceiver.ActionWithId(
-      CREATED_PROPOSAL,
-      IGovernanceChainRobotReceiver.ProposalAction.PerformActivateVoting
-    );
-    expected[1] = IGovernanceChainRobotReceiver.ActionWithId(
       ACTIVE_PROPOSAL,
       IGovernanceChainRobotReceiver.ProposalAction.PerformExecute
+    );
+    expected[1] = IGovernanceChainRobotReceiver.ActionWithId(
+      CREATED_PROPOSAL,
+      IGovernanceChainRobotReceiver.ProposalAction.PerformActivateVoting
     );
     _assertActions(performData, expected);
 
@@ -155,11 +155,11 @@ contract GovernanceChainRobotReceiverForkTest is Test {
     IGovernanceChainRobotReceiver.ActionWithId[]
       memory expected = new IGovernanceChainRobotReceiver.ActionWithId[](2);
     expected[0] = IGovernanceChainRobotReceiver.ActionWithId(
-      CREATED_PROPOSAL,
+      ACTIVE_PROPOSAL,
       IGovernanceChainRobotReceiver.ProposalAction.PerformCancel
     );
     expected[1] = IGovernanceChainRobotReceiver.ActionWithId(
-      ACTIVE_PROPOSAL,
+      CREATED_PROPOSAL,
       IGovernanceChainRobotReceiver.ProposalAction.PerformCancel
     );
     _assertActions(performData, expected);
@@ -208,11 +208,23 @@ contract GovernanceChainRobotReceiverForkTest is Test {
   }
 
   /// Checks the robot and BGD's keeper agree, then returns the robot's result.
+  /// The BGD keeper returns the same actions newest proposal first.
   function _checkUpkeepMatchingKeeper() internal view returns (bool, bytes memory) {
     (bool needed, bytes memory performData) = robot.checkUpkeep('');
     (bool keeperNeeded, bytes memory keeperData) = IAaveCREReceiver(BGD_KEEPER).checkUpkeep('');
     assertEq(needed, keeperNeeded, 'upkeepNeeded differs from the BGD keeper');
-    assertEq(performData, keeperData, 'performData differs from the BGD keeper');
+    if (!needed) return (needed, performData);
+
+    IGovernanceChainRobotReceiver.ActionWithId[] memory keeperActions = abi.decode(
+      keeperData,
+      (IGovernanceChainRobotReceiver.ActionWithId[])
+    );
+    IGovernanceChainRobotReceiver.ActionWithId[]
+      memory reversed = new IGovernanceChainRobotReceiver.ActionWithId[](keeperActions.length);
+    for (uint256 i = 0; i < keeperActions.length; i++) {
+      reversed[i] = keeperActions[keeperActions.length - 1 - i];
+    }
+    assertEq(performData, abi.encode(reversed), 'performData differs from the BGD keeper');
     return (needed, performData);
   }
 
