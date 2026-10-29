@@ -104,7 +104,7 @@ contract ExecutionChainRobotReceiver is
       }
 
       if (state == IPayloadsControllerCore.PayloadState.Queued) {
-        if (_isPastDelay(index)) {
+        if (_canPayloadBeExecuted(index)) {
           found[count++] = index;
           skipCount = 0;
         } else {
@@ -123,16 +123,12 @@ contract ExecutionChainRobotReceiver is
   }
 
   /// @dev Same condition `executePayload` enforces: queued (not expired) and past its delay.
+  /// One read, as `getPayloadById` returns the effective state, `Expired` included. The scan
+  /// only calls it on queued payloads, so the full payload is never loaded for junk ones.
   function _canPayloadBeExecuted(uint40 payloadId) internal view returns (bool) {
-    return
-      PAYLOADS_CONTROLLER.getPayloadState(payloadId) ==
-      IPayloadsControllerCore.PayloadState.Queued &&
-      _isPastDelay(payloadId);
-  }
-
-  /// @dev Only called on queued payloads, so the full payload is never loaded for junk ones.
-  function _isPastDelay(uint40 payloadId) internal view returns (bool) {
     IPayloadsControllerCore.Payload memory payload = PAYLOADS_CONTROLLER.getPayloadById(payloadId);
-    return block.timestamp > payload.queuedAt + payload.delay;
+    return
+      payload.state == IPayloadsControllerCore.PayloadState.Queued &&
+      block.timestamp > payload.queuedAt + payload.delay;
   }
 }
