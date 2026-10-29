@@ -39,7 +39,7 @@ governance-chain-robot/
 
   It stops once more than `MAX_SKIP` (20) consecutive proposals are final, i.e. after 21
   (a non-final proposal resets the count, disabled ones are ignored), or at `MAX_ACTIONS`
-  (5). `checkData` is unused.
+  (5). The actions are returned oldest proposal first. `checkData` is unused.
 
 - `onReport(metadata, ActionWithId[])` — reverts `AutomationIsDisabled` while automation is
   disabled, otherwise performs the actions oldest proposal first,

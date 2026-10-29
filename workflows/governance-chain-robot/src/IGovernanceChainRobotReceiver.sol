@@ -12,7 +12,7 @@ import {IIdDenylist} from 'aave-cre/IIdDenylist.sol';
 /// activates voting once the cooldown has passed, executes queued proposals and cancels
 /// proposals whose creator lost the proposition power. The `IIdDenylist` ids are proposal ids.
 /// @dev `checkData` is unused (the Governance is an immutable of the contract); `performData`
-/// and the `report` are `abi.encode(ActionWithId[])`, newest proposal first.
+/// and the `report` are `abi.encode(ActionWithId[])`, oldest proposal first.
 interface IGovernanceChainRobotReceiver is IGasCappedWorkflowsBase, IIdDenylist {
   /// @notice Action performed on a proposal.
   enum ProposalAction {
