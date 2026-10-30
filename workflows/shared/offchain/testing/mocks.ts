@@ -1,4 +1,6 @@
+import {getNetwork} from '@chainlink/cre-sdk';
 import {
+  bytesToHex,
   decodeAbiParameters,
   decodeFunctionData,
   encodeAbiParameters,
@@ -28,6 +30,30 @@ export const CHECK_UPKEEP_SELECTOR = toFunctionSelector(
 );
 
 export type CallContractInput = {call: {data: Uint8Array; to: Uint8Array}};
+
+export function chainSelectorOf(chainName: string, isTestnet = false): bigint {
+  const network = getNetwork({chainFamily: 'evm', chainSelectorName: chainName, isTestnet});
+  if (!network) throw new Error(`unknown chain ${chainName}`);
+  return network.chainSelector.selector;
+}
+
+/// `callContract` mock answering `checkUpkeep` only, with the given result. `onCheckData`
+/// receives the `checkData` of each call.
+export function checkUpkeepMock(
+  upkeepNeeded: boolean,
+  performData: Hex = '0x',
+  onCheckData?: (checkData: Hex) => void,
+) {
+  return (req: CallContractInput): {data: Uint8Array} => {
+    const data = bytesToHex(req.call.data);
+    if (data.slice(0, 10).toLowerCase() !== CHECK_UPKEEP_SELECTOR) {
+      throw new Error(`checkUpkeepMock: unmocked selector ${data.slice(0, 10)}`);
+    }
+    const [checkData] = decodeFunctionData({abi: IAaveCREReceiverABI, data}).args as [Hex];
+    onCheckData?.(checkData);
+    return {data: encodeCheckUpkeepResult(upkeepNeeded, performData)};
+  };
+}
 
 export type HubAssetPair = {hub: Hex; assetId: bigint};
 
