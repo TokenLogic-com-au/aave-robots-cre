@@ -10,6 +10,16 @@ import {GovernanceV3Arbitrum} from 'aave-address-book/GovernanceV3Arbitrum.sol';
 import {GovernanceV3Base} from 'aave-address-book/GovernanceV3Base.sol';
 import {GovernanceV3BNB} from 'aave-address-book/GovernanceV3BNB.sol';
 import {GovernanceV3Plasma} from 'aave-address-book/GovernanceV3Plasma.sol';
+import {GovernanceV3Celo} from 'aave-address-book/GovernanceV3Celo.sol';
+import {GovernanceV3Gnosis} from 'aave-address-book/GovernanceV3Gnosis.sol';
+import {GovernanceV3Ink} from 'aave-address-book/GovernanceV3Ink.sol';
+import {GovernanceV3Linea} from 'aave-address-book/GovernanceV3Linea.sol';
+import {GovernanceV3Mantle} from 'aave-address-book/GovernanceV3Mantle.sol';
+import {GovernanceV3MegaEth} from 'aave-address-book/GovernanceV3MegaEth.sol';
+import {GovernanceV3Scroll} from 'aave-address-book/GovernanceV3Scroll.sol';
+import {GovernanceV3Sonic} from 'aave-address-book/GovernanceV3Sonic.sol';
+import {GovernanceV3XLayer} from 'aave-address-book/GovernanceV3XLayer.sol';
+import {GovernanceV3ZkSync} from 'aave-address-book/GovernanceV3ZkSync.sol';
 
 /// @title GovernanceOwners
 /// @author Aave Labs
@@ -48,6 +58,36 @@ library GovernanceOwners {
     }
     if (chainId == ChainIds.MONAD) {
       return (MONAD_EXECUTOR_LVL_1, MONAD_GOVERNANCE_GUARDIAN);
+    }
+    if (chainId == ChainIds.CELO) {
+      return (GovernanceV3Celo.EXECUTOR_LVL_1, GovernanceV3Celo.GOVERNANCE_GUARDIAN);
+    }
+    if (chainId == ChainIds.GNOSIS) {
+      return (GovernanceV3Gnosis.EXECUTOR_LVL_1, GovernanceV3Gnosis.GOVERNANCE_GUARDIAN);
+    }
+    if (chainId == ChainIds.INK) {
+      return (GovernanceV3Ink.EXECUTOR_LVL_1, GovernanceV3Ink.GOVERNANCE_GUARDIAN);
+    }
+    if (chainId == ChainIds.LINEA) {
+      return (GovernanceV3Linea.EXECUTOR_LVL_1, GovernanceV3Linea.GOVERNANCE_GUARDIAN);
+    }
+    if (chainId == ChainIds.MANTLE) {
+      return (GovernanceV3Mantle.EXECUTOR_LVL_1, GovernanceV3Mantle.GOVERNANCE_GUARDIAN);
+    }
+    if (chainId == ChainIds.MEGAETH) {
+      return (GovernanceV3MegaEth.EXECUTOR_LVL_1, GovernanceV3MegaEth.GOVERNANCE_GUARDIAN);
+    }
+    if (chainId == ChainIds.SCROLL) {
+      return (GovernanceV3Scroll.EXECUTOR_LVL_1, GovernanceV3Scroll.GOVERNANCE_GUARDIAN);
+    }
+    if (chainId == ChainIds.SONIC) {
+      return (GovernanceV3Sonic.EXECUTOR_LVL_1, GovernanceV3Sonic.GOVERNANCE_GUARDIAN);
+    }
+    if (chainId == ChainIds.XLAYER) {
+      return (GovernanceV3XLayer.EXECUTOR_LVL_1, GovernanceV3XLayer.GOVERNANCE_GUARDIAN);
+    }
+    if (chainId == ChainIds.ZKSYNC) {
+      return (GovernanceV3ZkSync.EXECUTOR_LVL_1, GovernanceV3ZkSync.GOVERNANCE_GUARDIAN);
     }
     revert('unsupported chain');
   }

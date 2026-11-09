@@ -9,7 +9,7 @@ import {GovernanceOwners} from '../scripts/GovernanceOwners.sol';
 
 contract GovernanceOwnersTest is Test {
   function test_get_returnsOwnerAndGuardian() public view {
-    uint256[9] memory chainIds = [
+    uint256[19] memory chainIds = [
       ChainIds.MAINNET,
       ChainIds.AVALANCHE,
       ChainIds.POLYGON,
@@ -18,7 +18,17 @@ contract GovernanceOwnersTest is Test {
       ChainIds.BASE,
       ChainIds.BNB,
       ChainIds.PLASMA,
-      ChainIds.MONAD
+      ChainIds.MONAD,
+      ChainIds.CELO,
+      ChainIds.GNOSIS,
+      ChainIds.INK,
+      ChainIds.LINEA,
+      ChainIds.MANTLE,
+      ChainIds.MEGAETH,
+      ChainIds.SCROLL,
+      ChainIds.SONIC,
+      ChainIds.XLAYER,
+      ChainIds.ZKSYNC
     ];
     for (uint256 i = 0; i < chainIds.length; i++) {
       (address owner, address guardian) = this.get(chainIds[i]);
