@@ -1,0 +1,32 @@
+# ==========================================================================
+# CRE WORKFLOW SETTINGS — MintToTreasury
+# ==========================================================================
+# One cron trigger per network; split across three workflows to stay within
+# the per-workflow trigger limit (10).
+
+# ethereum, arbitrum, avalanche, base, optimism, polygon, bnb = 7 triggers
+mint-to-treasury-1-production-settings:
+  user-workflow:
+    workflow-name: "mint-to-treasury-1"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.production-1.json"
+    secrets-path: ""
+
+# gnosis, scroll, linea, celo, sonic, zksync = 6 triggers
+mint-to-treasury-2-production-settings:
+  user-workflow:
+    workflow-name: "mint-to-treasury-2"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.production-2.json"
+    secrets-path: ""
+
+# monad, plasma, megaeth, mantle, ink, xlayer = 6 triggers
+mint-to-treasury-3-production-settings:
+  user-workflow:
+    workflow-name: "mint-to-treasury-3"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.production-3.json"
+    secrets-path: ""

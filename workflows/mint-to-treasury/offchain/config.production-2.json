@@ -1,0 +1,35 @@
+{
+  "schedule": "0 6 * * *",
+  "evms": [
+    {
+      "chainName": "gnosis_chain-mainnet",
+      "isTestnet": false,
+      "receiver": ""
+    },
+    {
+      "chainName": "ethereum-mainnet-scroll-1",
+      "isTestnet": false,
+      "receiver": ""
+    },
+    {
+      "chainName": "ethereum-mainnet-linea-1",
+      "isTestnet": false,
+      "receiver": ""
+    },
+    {
+      "chainName": "celo-mainnet",
+      "isTestnet": false,
+      "receiver": ""
+    },
+    {
+      "chainName": "sonic-mainnet",
+      "isTestnet": false,
+      "receiver": ""
+    },
+    {
+      "chainName": "ethereum-mainnet-zksync-1",
+      "isTestnet": false,
+      "receiver": ""
+    }
+  ]
+}

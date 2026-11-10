@@ -6,9 +6,10 @@ This repo is the long-term home for **all** Aave CRE automations. Each robot liv
 
 ## Robots
 
-| Robot           | Folder                                                       | What it does                                                                       |
-| --------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| FeeSharesMinter | [`workflows/fee-shares-minter`](workflows/fee-shares-minter) | Mints accrued fee shares on Aave v4 hubs once a configurable threshold is crossed. |
+| Robot           | Folder                                                       | What it does                                                                             |
+| --------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| FeeSharesMinter | [`workflows/fee-shares-minter`](workflows/fee-shares-minter) | Mints accrued fee shares on Aave v4 hubs once a configurable threshold is crossed.       |
+| MintToTreasury  | [`workflows/mint-to-treasury`](workflows/mint-to-treasury)   | Mints the reserve factor accrued to the treasury on Aave v3 pools above a USD threshold. |
 
 See each robot's README for the contract design, test instructions, deploy flow and CRE workflow config.
 

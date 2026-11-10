@@ -1,0 +1,41 @@
+{
+  "name": "mint-to-treasury-workflow",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "simulate:1": "cre workflow simulate ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-1-production-settings --non-interactive --trigger-index=0",
+    "deploy:1": "cre workflow deploy ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-1-production-settings",
+    "deploy:1:unsigned": "cre workflow deploy ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-1-production-settings --unsigned",
+    "activate:1:unsigned": "cre workflow activate ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-1-production-settings --unsigned --yes",
+    "pause:1:unsigned": "cre workflow pause ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-1-production-settings --unsigned --yes",
+    "delete:1:unsigned": "cre workflow delete ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-1-production-settings --unsigned --yes",
+    "simulate:2": "cre workflow simulate ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-2-production-settings --non-interactive --trigger-index=0",
+    "deploy:2": "cre workflow deploy ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-2-production-settings",
+    "deploy:2:unsigned": "cre workflow deploy ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-2-production-settings --unsigned",
+    "activate:2:unsigned": "cre workflow activate ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-2-production-settings --unsigned --yes",
+    "pause:2:unsigned": "cre workflow pause ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-2-production-settings --unsigned --yes",
+    "delete:2:unsigned": "cre workflow delete ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-2-production-settings --unsigned --yes",
+    "simulate:3": "cre workflow simulate ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-3-production-settings --non-interactive --trigger-index=0",
+    "deploy:3": "cre workflow deploy ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-3-production-settings",
+    "deploy:3:unsigned": "cre workflow deploy ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-3-production-settings --unsigned",
+    "activate:3:unsigned": "cre workflow activate ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-3-production-settings --unsigned --yes",
+    "pause:3:unsigned": "cre workflow pause ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-3-production-settings --unsigned --yes",
+    "delete:3:unsigned": "cre workflow delete ./mint-to-treasury/offchain --project-root=../.. --env=../../../.env --target=mint-to-treasury-3-production-settings --unsigned --yes"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@chainlink/cre-sdk": "1.6.0",
+    "viem": "2.48.4",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.13",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "npm": ">=11"
+  }
+}
