@@ -43,9 +43,12 @@ interface IRolesAdmin {
 /// deposit and V2 to V3 migration of Collector funds.
 contract AaveDepositorReceiverAvalanchePolygonForkTest is Test {
   bytes32 internal constant ROLE_KEY = AaveDepositorNetworks.ROLE_KEY;
+  uint256 internal constant AVALANCHE_BLOCK = 99082939;
+  uint256 internal constant POLYGON_BLOCK = 96523829;
 
   struct Market {
     string fork;
+    uint256 blockNumber;
     address afcSafe;
     address collector;
     address poolV3;
@@ -61,6 +64,7 @@ contract AaveDepositorReceiverAvalanchePolygonForkTest is Test {
     _run(
       Market({
         fork: 'avalanche',
+        blockNumber: AVALANCHE_BLOCK,
         afcSafe: MiscAvalanche.AFC_SAFE,
         collector: address(AaveV3Avalanche.COLLECTOR),
         poolV3: address(AaveV3Avalanche.POOL),
@@ -78,6 +82,7 @@ contract AaveDepositorReceiverAvalanchePolygonForkTest is Test {
     _run(
       Market({
         fork: 'polygon',
+        blockNumber: POLYGON_BLOCK,
         afcSafe: MiscPolygon.AFC_SAFE,
         collector: address(AaveV3Polygon.COLLECTOR),
         poolV3: address(AaveV3Polygon.POOL),
@@ -92,7 +97,7 @@ contract AaveDepositorReceiverAvalanchePolygonForkTest is Test {
   }
 
   function _run(Market memory m) internal {
-    vm.createSelectFork(m.fork);
+    vm.createSelectFork(m.fork, m.blockNumber);
     AaveDepositorNetworks.Network memory net = AaveDepositorNetworks.get(block.chainid);
     (address owner, address guardian) = GovernanceOwners.get(block.chainid);
     AaveDepositorReceiver robot = new AaveDepositorReceiver(

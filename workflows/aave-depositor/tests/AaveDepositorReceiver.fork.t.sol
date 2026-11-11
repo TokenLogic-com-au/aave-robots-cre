@@ -31,12 +31,13 @@ contract AaveDepositorReceiverForkTest is Test {
   address internal constant ROLES = AaveDepositorNetworks.ETHEREUM_ROLES;
   bytes32 internal constant ROLE_KEY = AaveDepositorNetworks.ROLE_KEY;
   uint256 internal constant AMOUNT = 1_000_000e6;
+  uint256 internal constant FORK_BLOCK = 26316188;
 
   AaveDepositorReceiver internal robot;
   address internal anyone = makeAddr('anyone');
 
   function setUp() public {
-    vm.createSelectFork(vm.envString('RPC_MAINNET'));
+    vm.createSelectFork('mainnet', FORK_BLOCK);
     robot = new AaveDepositorReceiver(
       FORWARDER,
       ROLES,
