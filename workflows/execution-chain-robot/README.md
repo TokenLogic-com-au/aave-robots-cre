@@ -2,7 +2,7 @@
 
 CRE robot that executes Aave Governance V3 payloads once they are queued in a chain's
 `PayloadsController` and their timelock has passed. Native CRE port of BGD Labs'
-[`ExecutionChainRobotKeeper`](https://github.com/bgd-labs/aave-governance-v3-robots/blob/main/src/contracts/ExecutionChainRobotKeeper.sol)
+[`ExecutionChainRobotKeeper`](https://github.com/bgd-labs/aave-governance-v3-robot/blob/main/src/contracts/ExecutionChainRobotKeeper.sol)
 and, on Ethereum, its gas-capped variant. One receiver per chain: Ethereum, Avalanche,
 Polygon, Optimism, Arbitrum, Base, BNB and Plasma. BGD's other chains and Monad (not in the
 pinned `aave-address-book`) aren't covered yet; each is a `getDeployConfig` branch, a config
