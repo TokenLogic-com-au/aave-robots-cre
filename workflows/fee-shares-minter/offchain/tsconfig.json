@@ -17,5 +17,6 @@
     "types.ts",
     "../../shared/offchain/**/*.ts",
     "../../../lib/aave-helpers/lib/aave-address-book/src/ts/AaveV4Ethereum.ts"
-  ]
+  ],
+  "exclude": ["../../shared/offchain/tests"]
 }

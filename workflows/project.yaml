@@ -9,3 +9,62 @@ production-settings:
   rpcs:
     - chain-name: ethereum-mainnet
       url: https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}
+
+# MintToTreasury: one cron trigger per network, split across three workflows (CRE allows 10
+# triggers per workflow). Workflow owner is the Safe 0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B.
+mint-to-treasury-1-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: ${RPC_MAINNET}
+    - chain-name: ethereum-mainnet-arbitrum-1
+      url: ${RPC_ARBITRUM}
+    - chain-name: avalanche-mainnet
+      url: ${RPC_AVALANCHE}
+    - chain-name: ethereum-mainnet-base-1
+      url: ${RPC_BASE}
+    - chain-name: ethereum-mainnet-optimism-1
+      url: ${RPC_OPTIMISM}
+    - chain-name: polygon-mainnet
+      url: ${RPC_POLYGON}
+    - chain-name: binance_smart_chain-mainnet
+      url: ${RPC_BNB}
+
+mint-to-treasury-2-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: ${RPC_MAINNET}
+    - chain-name: gnosis_chain-mainnet
+      url: ${RPC_GNOSIS}
+    - chain-name: ethereum-mainnet-scroll-1
+      url: ${RPC_SCROLL}
+    - chain-name: ethereum-mainnet-linea-1
+      url: ${RPC_LINEA}
+    - chain-name: celo-mainnet
+      url: ${RPC_CELO}
+    - chain-name: sonic-mainnet
+      url: ${RPC_SONIC}
+    - chain-name: ethereum-mainnet-zksync-1
+      url: ${RPC_ZKSYNC}
+
+mint-to-treasury-3-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: ${RPC_MAINNET}
+    - chain-name: monad-mainnet
+      url: ${RPC_MONAD}
+    - chain-name: plasma-mainnet
+      url: ${RPC_PLASMA}
+    - chain-name: megaeth-mainnet
+      url: ${RPC_MEGAETH}
+    - chain-name: ethereum-mainnet-mantle-1
+      url: ${RPC_MANTLE}
+    - chain-name: ethereum-mainnet-ink-1
+      url: ${RPC_INK}
+    - chain-name: ethereum-mainnet-xlayer-1
+      url: ${RPC_XLAYER}

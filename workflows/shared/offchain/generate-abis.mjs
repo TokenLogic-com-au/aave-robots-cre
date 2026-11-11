@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Generates `as const` TS ABIs in ./abi from forge build artifacts. Run via
-// `npm run generate-abis`. Add a robot by appending to ABIS.
+// `npm run generate-abis`. Add a robot by appending to ABIS; set `file` when the interface
+// lives in a .sol file with another name.
 
 import {readFile, writeFile, mkdir} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
@@ -13,7 +14,7 @@ const REPO_ROOT = resolve(HERE, '../../..');
 const OUT_DIR = resolve(REPO_ROOT, 'out');
 const ABI_DIR = resolve(HERE, 'abi');
 
-const ABIS = [{name: 'IAaveCREReceiver'}, {name: 'IHub'}];
+const ABIS = [{name: 'IAaveCREReceiver'}, {name: 'IHub'}, {name: 'IPool'}];
 
 function runForgeBuild() {
   console.log('▸ forge build');
@@ -24,8 +25,8 @@ function runForgeBuild() {
   }
 }
 
-async function emitOne({name}) {
-  const artifactPath = resolve(OUT_DIR, `${name}.sol`, `${name}.json`);
+async function emitOne({name, file = name}) {
+  const artifactPath = resolve(OUT_DIR, `${file}.sol`, `${name}.json`);
   if (!existsSync(artifactPath)) {
     console.error(`✗ missing artifact for ${name} at ${relative(REPO_ROOT, artifactPath)}`);
     process.exit(1);

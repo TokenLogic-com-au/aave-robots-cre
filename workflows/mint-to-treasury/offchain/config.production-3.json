@@ -1,0 +1,35 @@
+{
+  "schedule": "0 6 * * *",
+  "evms": [
+    {
+      "chainName": "monad-mainnet",
+      "isTestnet": false,
+      "receiver": ""
+    },
+    {
+      "chainName": "plasma-mainnet",
+      "isTestnet": false,
+      "receiver": ""
+    },
+    {
+      "chainName": "megaeth-mainnet",
+      "isTestnet": false,
+      "receiver": ""
+    },
+    {
+      "chainName": "ethereum-mainnet-mantle-1",
+      "isTestnet": false,
+      "receiver": ""
+    },
+    {
+      "chainName": "ethereum-mainnet-ink-1",
+      "isTestnet": false,
+      "receiver": ""
+    },
+    {
+      "chainName": "ethereum-mainnet-xlayer-1",
+      "isTestnet": false,
+      "receiver": ""
+    }
+  ]
+}

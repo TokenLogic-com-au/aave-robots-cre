@@ -8,7 +8,6 @@ import {
 } from '@chainlink/cre-sdk';
 import {
   decodeAbiParameters,
-  decodeEventLog,
   decodeFunctionResult,
   encodeAbiParameters,
   encodeFunctionData,
@@ -19,6 +18,7 @@ import {
 import {shouldSubmit, submitReport} from '../../shared/offchain/checkUpkeep';
 import {IHubABI} from '../../shared/offchain/abi/IHub';
 import {hubsFor} from '../../shared/offchain/addresses';
+import {findEvents} from '../../shared/offchain/events';
 import {type Config, type NetworkConfig, type Target, configSchema} from './types';
 
 export {configSchema};
@@ -26,13 +26,6 @@ export {configSchema};
 type EvmClient = InstanceType<typeof cre.capabilities.EVMClient>;
 
 type HubAssetPair = {hub: Hex; assetId: bigint};
-
-type MintFeeSharesArgs = {
-  assetId: bigint;
-  feeReceiver: Hex;
-  shares: bigint;
-  assets: bigint;
-};
 
 type TargetResult = {minted: number; skipped: number; assetCount: bigint};
 
@@ -59,37 +52,6 @@ function readAssetCount(runtime: Runtime<Config>, evmClient: EvmClient, hub: str
     functionName: 'getAssetCount',
     data: bytesToHex(reply.data),
   }) as bigint;
-}
-
-function findMintFeeSharesEvents(
-  runtime: Runtime<Config>,
-  evmClient: EvmClient,
-  txHash: string,
-  hub: string,
-): Map<string, MintFeeSharesArgs> {
-  const events = new Map<string, MintFeeSharesArgs>();
-  const {receipt} = evmClient.getTransactionReceipt(runtime, {hash: txHash}).result();
-  if (!receipt) return events;
-
-  const hubLower = hub.toLowerCase();
-  for (const log of receipt.logs) {
-    const logAddr = bytesToHex(log.address).toLowerCase();
-    if (logAddr !== hubLower) continue;
-    try {
-      const decoded = decodeEventLog({
-        abi: IHubABI,
-        topics: log.topics.map((t) => bytesToHex(t)) as [Hex, ...Hex[]],
-        data: bytesToHex(log.data),
-      });
-      if (decoded.eventName === 'MintFeeShares') {
-        const args = decoded.args as unknown as MintFeeSharesArgs;
-        events.set(args.assetId.toString(), args);
-      }
-    } catch {
-      // log doesn't match any event in IHubABI — skip
-    }
-  }
-  return events;
 }
 
 export function runForTarget(
@@ -125,7 +87,11 @@ export function runForTarget(
     return {minted: 0, skipped: Number(assetCount), assetCount};
   }
 
-  const events = findMintFeeSharesEvents(runtime, evmClient, txHash, target.hub);
+  const events = new Map(
+    findEvents(runtime, evmClient, txHash, IHubABI, 'MintFeeShares', [target.hub as Hex]).map(
+      ({args}) => [args.assetId.toString(), args],
+    ),
+  );
   for (const pair of mintablePairs) {
     const sublabel = `${label}:asset=${pair.assetId}`;
     const event = events.get(pair.assetId.toString());
