@@ -1,5 +1,5 @@
 {
-  "$comment": "Addresses from https://github.com/bgd-labs/aave-address-book/blob/main/src/AaveV3Optimism.sol; ignoredTokens = GHO and AAVE. USD amounts have 8 decimals.",
+  "$comment": "Addresses from https://github.com/aave-dao/aave-address-book/blob/main/src/AaveV3Optimism.sol; ignoredTokens = GHO and AAVE. USD amounts have 8 decimals.",
   "schedule": "0 0 12 */14 * *",
   "chainName": "ethereum-mainnet-optimism-1",
   "isTestnet": false,
