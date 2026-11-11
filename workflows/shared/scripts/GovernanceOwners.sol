@@ -17,7 +17,7 @@ import {GovernanceV3Plasma} from 'aave-address-book/GovernanceV3Plasma.sol';
 /// executor and governance guardian.
 library GovernanceOwners {
   // GovernanceV3Monad is not in the pinned address book yet; values from
-  // https://github.com/bgd-labs/aave-address-book/blob/main/src/GovernanceV3Monad.sol
+  // https://github.com/aave-dao/aave-address-book/blob/main/src/GovernanceV3Monad.sol
   address internal constant MONAD_EXECUTOR_LVL_1 = 0xa9d0EAFF48cE1DF468f9eAeb7e628c413343F6A2;
   address internal constant MONAD_GOVERNANCE_GUARDIAN = 0x056E4C4E80D1D14a637ccbD0412CDAAEc5B51F4E;
 
