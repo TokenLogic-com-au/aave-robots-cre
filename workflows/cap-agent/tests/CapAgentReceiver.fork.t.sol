@@ -34,6 +34,14 @@ abstract contract CapAgentForkBase is Test {
   uint256 internal constant CAP_INCREASE_BPS = 1_00;
   uint256 internal constant BPS = 100_00;
 
+  // Pinned so changes on the live hubs don't change the outcome.
+  uint256 internal constant AVALANCHE_BLOCK = 98011434;
+  uint256 internal constant POLYGON_BLOCK = 95832698;
+  uint256 internal constant OPTIMISM_BLOCK = 158427812;
+  uint256 internal constant ARBITRUM_BLOCK = 516435095;
+  uint256 internal constant BASE_BLOCK = 52832527;
+  uint256 internal constant BNB_BLOCK = 128646424;
+
   address internal anyone = makeAddr('fork-anyone');
   address internal publisher = makeAddr('fork-risk-oracle-publisher');
 
@@ -156,7 +164,7 @@ contract CapAgentReceiverForkTest is CapAgentForkBase {
   IAgentHubConfig internal hub = IAgentHubConfig(MiscAvalanche.AGENT_HUB);
 
   function setUp() public {
-    vm.createSelectFork('avalanche');
+    vm.createSelectFork('avalanche', AVALANCHE_BLOCK);
     robot = new CapAgentReceiverHarness(address(hub), owner, guardian, _agentIds());
   }
 
@@ -306,31 +314,35 @@ contract CapAgentReceiverForkTest is CapAgentForkBase {
 /// update through the deployed receiver.
 contract CapAgentDeployScriptForkTest is CapAgentForkBase {
   function test_fork_avalanche_deployScriptInjects() public {
-    _deployAndInject('avalanche', MiscAvalanche.AGENT_HUB_AUTOMATION);
+    _deployAndInject('avalanche', AVALANCHE_BLOCK, MiscAvalanche.AGENT_HUB_AUTOMATION);
   }
 
   function test_fork_polygon_deployScriptInjects() public {
-    _deployAndInject('polygon', MiscPolygon.AGENT_HUB_AUTOMATION);
+    _deployAndInject('polygon', POLYGON_BLOCK, MiscPolygon.AGENT_HUB_AUTOMATION);
   }
 
   function test_fork_optimism_deployScriptInjects() public {
-    _deployAndInject('optimism', MiscOptimism.AGENT_HUB_AUTOMATION);
+    _deployAndInject('optimism', OPTIMISM_BLOCK, MiscOptimism.AGENT_HUB_AUTOMATION);
   }
 
   function test_fork_arbitrum_deployScriptInjects() public {
-    _deployAndInject('arbitrum', MiscArbitrum.AGENT_HUB_AUTOMATION);
+    _deployAndInject('arbitrum', ARBITRUM_BLOCK, MiscArbitrum.AGENT_HUB_AUTOMATION);
   }
 
   function test_fork_base_deployScriptInjects() public {
-    _deployAndInject('base', MiscBase.AGENT_HUB_AUTOMATION);
+    _deployAndInject('base', BASE_BLOCK, MiscBase.AGENT_HUB_AUTOMATION);
   }
 
   function test_fork_bnb_deployScriptInjects() public {
-    _deployAndInject('bnb', MiscBNB.AGENT_HUB_AUTOMATION);
+    _deployAndInject('bnb', BNB_BLOCK, MiscBNB.AGENT_HUB_AUTOMATION);
   }
 
-  function _deployAndInject(string memory chain, address legacyAutomation) internal {
-    vm.createSelectFork(chain);
+  function _deployAndInject(
+    string memory chain,
+    uint256 blockNumber,
+    address legacyAutomation
+  ) internal {
+    vm.createSelectFork(chain, blockNumber);
     DeployCapAgentReceiver script = new DeployCapAgentReceiver();
     DeployCapAgentReceiver.DeployConfig memory config = script.getDeployConfig(block.chainid);
     (address owner, address guardian) = GovernanceOwners.get(block.chainid);
