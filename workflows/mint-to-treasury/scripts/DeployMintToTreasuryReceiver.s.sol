@@ -37,7 +37,7 @@ contract DeployMintToTreasuryReceiver is Script {
   uint256 public constant INITIAL_USD_THRESHOLD = 5_000e8;
 
   // AaveV3Monad is not in the pinned address book yet; value from
-  // https://github.com/bgd-labs/aave-address-book/blob/main/src/AaveV3Monad.sol
+  // https://github.com/aave-dao/aave-address-book/blob/main/src/AaveV3Monad.sol
   address internal constant MONAD_POOL = 0x69a5F9AD4f96ebf0a0C792dD42a01cC5C0102fef;
 
   function run() external returns (address) {

@@ -33,7 +33,7 @@ export function hubsFor(chainName: string): readonly Hex[] {
 }
 
 // Monad is not in the pinned address book yet; POOL from AaveV3Monad.ts in
-// https://github.com/bgd-labs/aave-address-book/tree/main/src/ts
+// https://github.com/aave-dao/aave-address-book/tree/main/src/ts
 const AAVE_V3_MONAD_POOL: Hex = '0x69a5F9AD4f96ebf0a0C792dD42a01cC5C0102fef';
 
 // Live Aave v3 pools per CRE chain name.

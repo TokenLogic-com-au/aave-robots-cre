@@ -246,7 +246,7 @@ contract MintToTreasuryEthereumFork is MintToTreasuryForkBase {
 /// Forking Monad needs forge's Monad EVM, which only `--network monad` selects.
 contract MintToTreasuryMonadFork is MintToTreasuryForkBase {
   // AaveV3Monad is not in the pinned address book yet; value from
-  // https://github.com/bgd-labs/aave-address-book/blob/main/src/AaveV3Monad.sol
+  // https://github.com/aave-dao/aave-address-book/blob/main/src/AaveV3Monad.sol
   address internal constant COLLECTOR = 0x22A14267f9F8bA21D11898F0772e652B09e6A8A1;
 
   function setUp() public {
