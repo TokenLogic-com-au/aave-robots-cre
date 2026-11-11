@@ -16,7 +16,7 @@ import {
 } from 'viem';
 import {ICLAutomation} from '../contracts/abi/ICLAutomation';
 import {IMailboxCRE} from '../contracts/abi/IMailboxCRE';
-import {MAX_WRITE_GAS_LIMIT} from './gas';
+import {fitsWriteQuota, maxWriteGas} from './gas';
 import {type Config} from './types';
 
 export const processAutomation = (
@@ -94,9 +94,9 @@ export const processAutomation = (
 
   // Sending anyway would burn the gas and still fail inside the forwarder;
   // leave anything this large to the backup keeper.
-  if (estimate > MAX_WRITE_GAS_LIMIT) {
+  if (!fitsWriteQuota(chainName, estimate)) {
     runtime.log(
-      `[${chainName}] [${robot}] estimate ${estimate} exceeds max write gas ${MAX_WRITE_GAS_LIMIT} - skipping`,
+      `[${chainName}] [${robot}] estimate ${estimate} exceeds max write gas ${maxWriteGas(chainName)} - skipping`,
     );
     return null;
   }

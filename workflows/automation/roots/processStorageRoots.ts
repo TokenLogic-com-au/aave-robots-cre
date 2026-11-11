@@ -15,7 +15,7 @@ import {
   zeroAddress,
   type Hex,
 } from 'viem';
-import {MAX_WRITE_GAS_LIMIT} from '../gas';
+import {fitsWriteQuota, maxWriteGas} from '../gas';
 import {type Config} from '../types';
 import {type RootsConfig, type VotingNetworkConfig} from './types';
 import {IGovernanceCore} from '../../contracts/abi/IGovernanceCore';
@@ -101,9 +101,9 @@ function sendViaMailbox(
     .result();
   runtime.log(`[${chainName}] Gas estimate for ${label}: ${gasEstimate.gas.toString()}`);
 
-  if (gasEstimate.gas > MAX_WRITE_GAS_LIMIT) {
+  if (!fitsWriteQuota(chainName, gasEstimate.gas)) {
     throw new Error(
-      `[${chainName}] gas estimate ${gasEstimate.gas} for ${label} exceeds max write gas ${MAX_WRITE_GAS_LIMIT}`,
+      `[${chainName}] gas estimate ${gasEstimate.gas} for ${label} exceeds max write gas ${maxWriteGas(chainName)}`,
     );
   }
 

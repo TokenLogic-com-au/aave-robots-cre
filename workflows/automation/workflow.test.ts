@@ -3,7 +3,7 @@ import {TxStatus, getNetwork} from '@chainlink/cre-sdk';
 import {EvmMock, newTestRuntime, test} from '@chainlink/cre-sdk/test';
 import {encodeAbiParameters, hexToBytes, parseAbiParameters, type Hex} from 'viem';
 
-import {MAX_WRITE_GAS_LIMIT} from './gas';
+import {maxWriteGas} from './gas';
 import {createAutomationHandler, createHandlers} from './handlers';
 import {configSchema} from './types';
 
@@ -78,7 +78,7 @@ describe('automation handler', () => {
   test('skips the write when the estimate exceeds the max write gas', () => {
     const evmMock = EvmMock.testInstance(CHAIN_SELECTOR);
     evmMock.callContract = () => ({data: checkUpkeepResult(true, PERFORM_DATA)});
-    evmMock.estimateGas = () => ({gas: MAX_WRITE_GAS_LIMIT + 1n});
+    evmMock.estimateGas = () => ({gas: maxWriteGas(CHAIN_NAME)});
     let written = false;
     evmMock.writeReport = () => {
       written = true;
