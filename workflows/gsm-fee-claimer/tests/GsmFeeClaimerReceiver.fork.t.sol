@@ -106,12 +106,12 @@ contract GsmFeeClaimerReceiverForkTest is Test {
 /// Deploys through the script on every other supported chain and probes its live GSM.
 contract GsmFeeClaimerDeployScriptForkTest is Test {
   // Not in the pinned address book yet; values from offchain/config.production.json.
-  address internal constant ARBITRUM_GSM_USDT = 0x53E0cE250d06043414070100458546AaF4e284eD;
+  address internal constant ARBITRUM_GSM_USDCN = 0x1aEe7A618B0CC687cCED9aB796e464062f1508CA;
   address internal constant MONAD_GSM_USDC = 0x3Cf3779EEf770931543ACd2C7f6ECd1b37E35caB;
 
   function test_fork_arbitrum_deployScriptReadsGsm() public {
     vm.skip(!vm.envExists('RPC_ARBITRUM'), 'RPC_ARBITRUM not set');
-    _deployAndCheck('arbitrum', ARBITRUM_GSM_USDT);
+    _deployAndCheck('arbitrum', ARBITRUM_GSM_USDCN);
   }
 
   function test_fork_plasma_deployScriptReadsGsm() public {

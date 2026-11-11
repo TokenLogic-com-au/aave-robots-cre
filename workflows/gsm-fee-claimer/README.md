@@ -1,6 +1,6 @@
 # GSM Fee Claimer
 
-CRE robot that sends accrued [GSM](https://github.com/aave/gho-core) fees to the
+CRE robot that sends accrued [GSM](https://github.com/aave-dao/gho-origin) fees to the
 GHO treasury. Native CRE re-implementation of the `bot-gsm-fee-claimer` workflow
 and its `GsmFeeDistributor` receiver. One receiver per network, any number of GSMs.
 
