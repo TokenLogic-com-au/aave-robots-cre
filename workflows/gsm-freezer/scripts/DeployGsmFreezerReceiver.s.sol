@@ -26,7 +26,7 @@ contract DeployGsmFreezerReceiver is Script {
   }
 
   // Monad is not in the pinned address book yet; values from GhoMonad.sol and AaveV3Monad.sol
-  // in https://github.com/bgd-labs/aave-address-book/tree/main/src
+  // in https://github.com/aave-dao/aave-address-book/tree/main/src
   address internal constant MONAD_GSM_USDC = 0x3Cf3779EEf770931543ACd2C7f6ECd1b37E35caB;
   address internal constant MONAD_USDC_UNDERLYING = 0x754704Bc059F8C67012fEd69BC8A327a5aafb603;
   address internal constant MONAD_POOL_ADDRESSES_PROVIDER =
@@ -61,7 +61,7 @@ contract DeployGsmFreezerReceiver is Script {
     vm.stopBroadcast();
   }
 
-  /// Arbitrum is left out: its only GSM (`GhoArbitrum.GSM_USDC`) is seized.
+  /// Arbitrum is left out: its GSM (USDCn) keeps its own `ChainlinkOracleSwapFreezer`.
   function getDeployConfig(uint256 chainId) public pure returns (DeployConfig memory config) {
     if (chainId == ChainIds.MAINNET) {
       config.addressesProvider = address(AaveV3Ethereum.POOL_ADDRESSES_PROVIDER);

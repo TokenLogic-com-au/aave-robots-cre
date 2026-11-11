@@ -1,11 +1,11 @@
 # GSM Freezer
 
-CRE robot that freezes (and unfreezes) [GSM](https://github.com/aave/gho-core) swaps
+CRE robot that freezes (and unfreezes) [GSM](https://github.com/aave-dao/gho-origin) swaps
 when the underlying asset's oracle price leaves a configured band, the depeg
 protection for GHO's stability modules. Native CRE port of the GSM
-[`OracleSwapFreezer`](https://github.com/aave/gho-core/blob/main/src/contracts/facilitators/gsm/swapFreezer/OracleSwapFreezer.sol).
-One receiver per GSM: Ethereum USDC and USDT, Plasma USDT and Monad USDC. Arbitrum has
-none, its only GSM is seized.
+[`OracleSwapFreezer`](https://github.com/aave-dao/gho-origin/tree/main/src/contracts/facilitators/gsm/swapFreezer).
+One receiver per GSM: Ethereum USDC and USDT, Plasma USDT and Monad USDC. Arbitrum's GSM
+(USDCn) is not covered: it keeps its own `ChainlinkOracleSwapFreezer`.
 
 ## Layout
 
