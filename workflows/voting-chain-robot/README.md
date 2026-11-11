@@ -3,7 +3,7 @@
 CRE robot automating the Aave Governance V3 voting machines: it starts a proposal's vote
 once its storage roots are registered and closes it (sending the result to Ethereum) once
 voting ends. Native CRE port of BGD's
-[`VotingChainRobotKeeper`](https://github.com/bgd-labs/aave-governance-v3-robots/blob/main/src/contracts/VotingChainRobotKeeper.sol)
+[`VotingChainRobotKeeper`](https://github.com/bgd-labs/aave-governance-v3-robot/blob/main/src/contracts/VotingChainRobotKeeper.sol)
 and its gas capped variant. One receiver per voting chain: Ethereum, Avalanche and Polygon.
 
 ## Layout
