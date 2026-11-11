@@ -1,0 +1,27 @@
+{
+  "schedule": "*/5 * * * *",
+  "evms": [
+    { "chainName": "avalanche-mainnet", "isTestnet": false, "receiver": "" },
+    { "chainName": "polygon-mainnet", "isTestnet": false, "receiver": "" },
+    {
+      "chainName": "ethereum-mainnet-optimism-1",
+      "isTestnet": false,
+      "receiver": ""
+    },
+    {
+      "chainName": "ethereum-mainnet-arbitrum-1",
+      "isTestnet": false,
+      "receiver": ""
+    },
+    {
+      "chainName": "ethereum-mainnet-base-1",
+      "isTestnet": false,
+      "receiver": ""
+    },
+    {
+      "chainName": "binance_smart_chain-mainnet",
+      "isTestnet": false,
+      "receiver": ""
+    }
+  ]
+}
