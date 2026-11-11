@@ -9,3 +9,15 @@ production-settings:
   rpcs:
     - chain-name: ethereum-mainnet
       url: https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}
+
+# Voting Chain Robot: the Governance V3 voting chains (Ethereum, Avalanche, Polygon).
+voting-chain-robot-production-settings:
+  account:
+    workflow-owner-address: "0x73494691C9B28b91A0b4C9dF213c1893fddA3a3B"
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: ${RPC_MAINNET}
+    - chain-name: avalanche-mainnet
+      url: ${RPC_AVALANCHE}
+    - chain-name: polygon-mainnet
+      url: ${RPC_POLYGON}
